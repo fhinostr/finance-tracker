@@ -2,6 +2,10 @@ import { createClient } from '@supabase/supabase-js';
 
 const STORAGE_KEY_SUPABASE = 'finance-tracker:supabase-config:v1';
 
+const DEFAULT_SUPABASE_URL = 'https://bilryjjivfslyipdhgsk.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJpbHJ5amppdmZzbHlpcGRoZ3NrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMyMTI2MDEsImV4cCI6MjEwODc4ODYwMX0.t9mdbey2K_Dt0gyXLZ9AMa9pbKGe3Ro2wE-gCrWs9qo';
+
 export function getSupabaseConfig() {
   const envUrl = import.meta.env.VITE_SUPABASE_URL || '';
   const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
@@ -12,12 +16,15 @@ export function getSupabaseConfig() {
 
   try {
     const raw = localStorage.getItem(STORAGE_KEY_SUPABASE);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.url && parsed.anonKey) return parsed;
+    }
   } catch {
     // ignore
   }
 
-  return { url: '', anonKey: '' };
+  return { url: DEFAULT_SUPABASE_URL, anonKey: DEFAULT_SUPABASE_ANON_KEY };
 }
 
 export function saveSupabaseConfig(url, anonKey) {
@@ -83,3 +90,4 @@ export async function callPlaidApi(action, payload = {}) {
 
   return await localRes.json();
 }
+
