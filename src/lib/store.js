@@ -1,6 +1,25 @@
 import { useCallback, useEffect, useState } from 'react';
 
 const STORAGE_KEY = 'finance-tracker:v1';
+const STORAGE_KEY_ACCOUNTS = 'finance-tracker:linked-accounts:v1';
+
+export function getStoredAccounts() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_ACCOUNTS);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    // fallback
+  }
+  return [];
+}
+
+export function saveStoredAccounts(accounts) {
+  try {
+    localStorage.setItem(STORAGE_KEY_ACCOUNTS, JSON.stringify(accounts));
+  } catch {
+    // fallback
+  }
+}
 
 export const EXPENSE_CATEGORIES = [
   'Groceries',

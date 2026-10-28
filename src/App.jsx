@@ -13,6 +13,7 @@ import {
   Trash2,
   Calendar,
   Layers,
+  Building2,
 } from 'lucide-react';
 import {
   useFinanceData,
@@ -20,8 +21,10 @@ import {
   monthsToPayoff,
   formatMoney,
   currentMonthKey,
+  getStoredAccounts,
 } from './lib/store.js';
 import AddEntrySheet from './components/AddEntrySheet.jsx';
+import LinkedAccountsModal from './components/LinkedAccountsModal.jsx';
 
 const springAnim = {
   type: 'spring',
@@ -33,8 +36,32 @@ export default function PersonalFinanceTracker() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [includeBonus, setIncludeBonus] = useState(false);
   const [sheet, setSheet] = useState({ isOpen: false, autoListen: false });
+  const [showLinkedModal, setShowLinkedModal] = useState(false);
+  const [linkedAccounts, setLinkedAccounts] = useState(getStoredAccounts);
 
   const { entries, budgets, addEntry, removeEntry } = useFinanceData();
+
+  const handleSyncTransactions = (newTxs) => {
+    if (!Array.isArray(newTxs)) return;
+    for (const tx of newTxs) {
+      // Avoid duplicate by name and date
+      const exists = entries.some((e) => e.name === tx.name && e.date === tx.date && e.amount === tx.amount);
+      if (!exists) {
+        addEntry({
+          kind: tx.kind || 'expense',
+          name: tx.name,
+          amount: tx.amount,
+          category: tx.category || 'Other',
+          frequency: 'one-time',
+          date: tx.date,
+        });
+      }
+    }
+  };
+
+  const handleUpdateInvestmentTotal = () => {
+    setLinkedAccounts(getStoredAccounts());
+  };
 
   // --- Calculations ---
   const {
@@ -156,13 +183,26 @@ export default function PersonalFinanceTracker() {
               </button>
             )}
           </div>
-          <button
-            onClick={() => openAdd(false)}
-            aria-label="Add income or entry"
-            className="h-12 w-12 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 transition-all backdrop-blur-md border border-white/20 flex items-center justify-center shadow-lg"
-          >
-            <DollarSign className="text-green-400" size={24} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setLinkedAccounts(getStoredAccounts());
+                setShowLinkedModal(true);
+              }}
+              aria-label="Linked bank and Robinhood accounts"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 transition-all backdrop-blur-md border border-white/20 text-xs font-semibold text-gray-200 shadow-lg"
+            >
+              <Building2 className="text-blue-400" size={15} />
+              <span>{linkedAccounts.length > 0 ? `${linkedAccounts.length} Linked` : 'Link Accounts'}</span>
+            </button>
+            <button
+              onClick={() => openAdd(false)}
+              aria-label="Add income or entry"
+              className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 transition-all backdrop-blur-md border border-white/20 flex items-center justify-center shadow-lg"
+            >
+              <DollarSign className="text-green-400" size={20} />
+            </button>
+          </div>
         </motion.header>
 
         {/* Tab Navigation (iOS Segmented Control Style) */}
@@ -230,6 +270,11 @@ export default function PersonalFinanceTracker() {
               <WealthTab
                 debts={debts}
                 entries={entries}
+                linkedAccounts={linkedAccounts}
+                onOpenLink={() => {
+                  setLinkedAccounts(getStoredAccounts());
+                  setShowLinkedModal(true);
+                }}
               />
             )}
           </motion.div>
@@ -263,6 +308,20 @@ export default function PersonalFinanceTracker() {
           </button>
         </motion.div>
       </div>
+
+      {/* Linked Accounts Modal */}
+      <AnimatePresence>
+        {showLinkedModal && (
+          <LinkedAccountsModal
+            onClose={() => {
+              setLinkedAccounts(getStoredAccounts());
+              setShowLinkedModal(false);
+            }}
+            onSyncTransactions={handleSyncTransactions}
+            onUpdateInvestmentTotal={handleUpdateInvestmentTotal}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Add / Dictate Modal Sheet */}
       <AnimatePresence>
@@ -608,12 +667,70 @@ function DebtTab({ debts, entries, onDelete, onAdd }) {
   );
 }
 
-function WealthTab({ debts, entries }) {
+function WealthTab({ debts, entries, linkedAccounts = [], onOpenLink }) {
   const kiaDebt = debts.find((d) => d.name.toLowerCase().includes('kia')) || debts[0];
   const kiaRemaining = kiaDebt ? debtBalance(kiaDebt, entries) : 0;
+  const robinhoodAcc = linkedAccounts.find((a) => a.type === 'investment' || a.name.toLowerCase().includes('robinhood'));
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      {/* Robinhood Portfolio Card */}
+      {robinhoodAcc ? (
+        <GlassCard
+          title="Robinhood Portfolio"
+          icon={<TrendingUp className="text-emerald-400" />}
+          amount={formatMoney(robinhoodAcc.balance)}
+        >
+          <div className="space-y-3">
+            <div className="flex justify-between items-center text-xs text-gray-400">
+              <span>Account ••••{robinhoodAcc.mask}</span>
+              <span className="text-emerald-400 font-medium">Synced {robinhoodAcc.lastSynced}</span>
+            </div>
+
+            {robinhoodAcc.holdings && robinhoodAcc.holdings.length > 0 && (
+              <div className="space-y-2 pt-1">
+                <p className="text-[11px] uppercase tracking-wider font-semibold text-gray-400">Holdings</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {robinhoodAcc.holdings.map((h) => (
+                    <div key={h.symbol} className="p-2.5 rounded-xl bg-black/40 border border-white/5">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold text-white">{h.symbol}</span>
+                        <span className="text-xs font-semibold text-gray-200">{formatMoney(h.value)}</span>
+                      </div>
+                      <p className="text-[10px] text-gray-500 truncate">{h.name}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={onOpenLink}
+              className="mt-2 w-full py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-medium text-gray-300 transition-colors"
+            >
+              Manage in Linked Accounts
+            </button>
+          </div>
+        </GlassCard>
+      ) : (
+        <button
+          onClick={onOpenLink}
+          className="w-full p-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 to-teal-500/10 hover:from-emerald-500/20 hover:to-teal-500/20 border border-emerald-500/20 text-left flex items-center justify-between transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-400">
+              <TrendingUp size={20} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-white">Connect Robinhood Account</p>
+              <p className="text-xs text-gray-400">Track your portfolio value & stock positions live</p>
+            </div>
+          </div>
+          <Plus size={16} className="text-emerald-400" />
+        </button>
+      )}
+
+      {/* Savings & Investment Waterfall */}
       <GlassCard
         title="Savings & Investments"
         icon={<PiggyBank className="text-green-400" />}
@@ -630,8 +747,17 @@ function WealthTab({ debts, entries }) {
             current={kiaDebt ? `${formatMoney(kiaRemaining)} Left` : 'Done'}
             status={kiaRemaining > 0 ? 'active' : 'completed'}
           />
-          <WaterfallItem step="4" title="Emergency HYSA" target="$10,000" current="$0" status="locked" />
-          <WaterfallItem step="5" title="Roth IRA" target="$7,000" current="$0" status="locked" />
+          {robinhoodAcc && (
+            <WaterfallItem
+              step="4"
+              title="Robinhood Portfolio"
+              target="Growth"
+              current={formatMoney(robinhoodAcc.balance)}
+              status="active"
+            />
+          )}
+          <WaterfallItem step={robinhoodAcc ? "5" : "4"} title="Emergency HYSA" target="$10,000" current="$0" status="locked" />
+          <WaterfallItem step={robinhoodAcc ? "6" : "5"} title="Roth IRA" target="$7,000" current="$0" status="locked" />
         </div>
       </GlassCard>
     </div>
