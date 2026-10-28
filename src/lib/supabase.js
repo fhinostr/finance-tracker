@@ -43,10 +43,10 @@ export function getPlaidConfig() {
   } catch {
     // ignore
   }
-  return { clientId: '', secret: '', env: 'development' };
+  return { clientId: '', secret: '', env: 'sandbox' };
 }
 
-export function savePlaidConfig(clientId, secret, env = 'development') {
+export function savePlaidConfig(clientId, secret, env = 'sandbox') {
   try {
     localStorage.setItem(
       STORAGE_KEY_PLAID,

@@ -22,9 +22,10 @@ Deno.serve(async (req) => {
     // ignore
   }
 
-  const PLAID_CLIENT_ID = Deno.env.get('PLAID_CLIENT_ID') || body.plaid_client_id || '';
-  const PLAID_SECRET = Deno.env.get('PLAID_SECRET') || body.plaid_secret || '';
-  const PLAID_ENV = Deno.env.get('PLAID_ENV') || body.plaid_env || 'sandbox';
+  const PLAID_CLIENT_ID = (Deno.env.get('PLAID_CLIENT_ID') || body.plaid_client_id || '').trim();
+  const PLAID_SECRET = (Deno.env.get('PLAID_SECRET') || body.plaid_secret || '').trim();
+  const rawEnv = (Deno.env.get('PLAID_ENV') || body.plaid_env || 'sandbox').toLowerCase().trim();
+  const PLAID_ENV = rawEnv === 'production' ? 'production' : 'sandbox';
 
   if (!PLAID_CLIENT_ID || !PLAID_SECRET) {
     return new Response(
@@ -36,7 +37,7 @@ Deno.serve(async (req) => {
   }
 
   const configuration = new Configuration({
-    basePath: PlaidEnvironments[PLAID_ENV] || PlaidEnvironments.sandbox,
+    basePath: PLAID_ENV === 'production' ? PlaidEnvironments.production : PlaidEnvironments.sandbox,
     baseOptions: {
       headers: {
         'PLAID-CLIENT-ID': PLAID_CLIENT_ID,

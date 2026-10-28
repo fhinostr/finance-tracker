@@ -34,7 +34,7 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
   const initialPlaid = getPlaidConfig();
   const [plaidClientId, setPlaidClientId] = useState(initialPlaid.clientId);
   const [plaidSecret, setPlaidSecret] = useState(initialPlaid.secret);
-  const [plaidEnv, setPlaidEnv] = useState(initialPlaid.env || 'development');
+  const [plaidEnv, setPlaidEnv] = useState(initialPlaid.env || 'sandbox');
   const [showKeySettings, setShowKeySettings] = useState(!initialPlaid.clientId || !initialPlaid.secret);
   const [keysSaved, setKeysSaved] = useState(false);
 
@@ -49,7 +49,9 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
         setShowKeySettings(false);
       }
     } catch (err) {
-      setErrorMessage(err.message || 'Unable to connect to Plaid');
+      setErrorMessage(
+        `${err.message || 'Unable to connect to Plaid'}. If you copied the Sandbox secret, make sure Environment is set to Sandbox (or Production if using Production secret).`,
+      );
     } finally {
       setLoading(false);
     }
@@ -436,9 +438,16 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
                     onChange={(e) => setPlaidEnv(e.target.value)}
                     className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-400/60"
                   >
-                    <option value="development">Development (Real Bank & Robinhood accounts)</option>
-                    <option value="sandbox">Sandbox (Testing only)</option>
+                    <option value="sandbox">Sandbox (Testing — use your Plaid 'Sandbox' secret)</option>
+                    <option value="production">Production (Live Accounts — use your Plaid 'Production' secret)</option>
                   </select>
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    Check which row your secret came from on the Plaid Keys page:
+                    <br />
+                    • If copied from the <strong>Sandbox</strong> row → select <strong>Sandbox</strong>.
+                    <br />
+                    • If copied from the <strong>Production</strong> row → select <strong>Production</strong>.
+                  </p>
                 </div>
 
                 <button
