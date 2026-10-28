@@ -8,11 +8,14 @@ import {
   RefreshCw,
   CheckCircle2,
   AlertCircle,
-  ExternalLink,
   ShieldCheck,
   Trash2,
+  Database,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { formatMoney, getStoredAccounts, saveStoredAccounts } from '../lib/store.js';
+import { callPlaidApi, getSupabaseConfig, saveSupabaseConfig } from '../lib/supabase.js';
 
 export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpdateInvestmentTotal }) {
   const [accounts, setAccounts] = useState(getStoredAccounts);
@@ -22,24 +25,33 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
   const [syncingId, setSyncingId] = useState(null);
   const [statusMessage, setStatusMessage] = useState('');
 
-  // Fetch or prepare Link Token from serverless endpoint
+  // Supabase Settings state
+  const [showConfig, setShowConfig] = useState(false);
+  const currentConfig = getSupabaseConfig();
+  const [supabaseUrl, setSupabaseUrl] = useState(currentConfig.url);
+  const [supabaseKey, setSupabaseKey] = useState(currentConfig.anonKey);
+  const [configSaved, setConfigSaved] = useState(false);
+
+  // Initialize Link Token via Supabase Edge Function or local backend
   useEffect(() => {
-    async function initLink() {
-      try {
-        const res = await fetch('/api/create-link-token', { method: 'POST' });
-        if (!res.ok) throw new Error('API route offline');
-        const data = await res.json();
-        if (data.link_token) {
+    let active = true;
+    callPlaidApi('create-link-token')
+      .then((data) => {
+        if (!active) return;
+        if (data?.link_token) {
           setLinkToken(data.link_token);
-        } else if (data.demoMode) {
+          setIsDemoMode(false);
+        } else if (data?.demoMode) {
           setIsDemoMode(true);
         }
-      } catch {
-        // Running locally or on static host without backend
-        setIsDemoMode(true);
-      }
-    }
-    initLink();
+      })
+      .catch(() => {
+        if (active) setIsDemoMode(true);
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const persist = useCallback((next) => {
@@ -47,21 +59,32 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
     saveStoredAccounts(next);
   }, []);
 
+  const handleSaveSupabaseConfig = (e) => {
+    e.preventDefault();
+    saveSupabaseConfig(supabaseUrl, supabaseKey);
+    setConfigSaved(true);
+    setTimeout(() => setConfigSaved(false), 2500);
+    callPlaidApi('create-link-token')
+      .then((data) => {
+        if (data?.link_token) {
+          setLinkToken(data.link_token);
+          setIsDemoMode(false);
+        }
+      })
+      .catch(() => setIsDemoMode(true));
+  };
+
   // Exchange Plaid Public Token
   const onSuccess = useCallback(
     async (public_token, metadata) => {
       setLoading(true);
       try {
-        const res = await fetch('/api/exchange-token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            public_token,
-            institution: metadata?.institution,
-            accounts: metadata?.accounts,
-          }),
+        const data = await callPlaidApi('exchange-token', {
+          public_token,
+          institution: metadata?.institution,
+          accounts: metadata?.accounts,
         });
-        const data = await res.json();
+
         const newAcc = {
           id: data.item_id || 'acc-' + Date.now(),
           name: metadata?.institution?.name || 'Linked Financial Account',
@@ -74,8 +97,8 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
         const next = [...accounts, newAcc];
         persist(next);
         setStatusMessage(`Successfully connected ${newAcc.name}!`);
-      } catch {
-        setStatusMessage('Error connecting account.');
+      } catch (err) {
+        setStatusMessage(`Connection failed: ${err.message || 'Error connecting account'}`);
       } finally {
         setLoading(false);
       }
@@ -134,12 +157,11 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
   const syncAccount = async (acc) => {
     setSyncingId(acc.id);
     try {
-      const res = await fetch('/api/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ access_token: acc.accessToken, account_type: acc.type }),
+      const data = await callPlaidApi('sync', {
+        access_token: acc.accessToken,
+        account_type: acc.type,
       });
-      const data = await res.json();
+
       if (data.transactions && onSyncTransactions) {
         onSyncTransactions(data.transactions);
       }
@@ -299,24 +321,68 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
             </div>
           )}
 
-          {isDemoMode && (
+          {/* Supabase Connection Setup Panel */}
+          <div className="mt-4 rounded-2xl bg-white/5 border border-white/10 overflow-hidden">
+            <button
+              onClick={() => setShowConfig(!showConfig)}
+              className="w-full p-3.5 text-left flex items-center justify-between text-xs font-semibold text-gray-300 hover:text-white"
+            >
+              <div className="flex items-center gap-2">
+                <Database size={15} className="text-emerald-400" />
+                <span>Supabase Backend Settings</span>
+              </div>
+              {showConfig ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+            </button>
+
+            {showConfig && (
+              <form onSubmit={handleSaveSupabaseConfig} className="p-3.5 pt-0 space-y-3 text-xs border-t border-white/5">
+                <p className="text-gray-400 text-[11px] leading-relaxed">
+                  Enter your Supabase credentials (from Supabase Dashboard $\rightarrow$ Project Settings $\rightarrow$ API).
+                  Your Plaid secrets stay securely inside Supabase Edge Functions.
+                </p>
+
+                <div>
+                  <label className="block text-[11px] text-gray-400 mb-1">Project URL</label>
+                  <input
+                    type="url"
+                    value={supabaseUrl}
+                    onChange={(e) => setSupabaseUrl(e.target.value)}
+                    placeholder="https://your-project-id.supabase.co"
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-emerald-400/60"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] text-gray-400 mb-1">Anon / Public Key</label>
+                  <input
+                    type="password"
+                    value={supabaseKey}
+                    onChange={(e) => setSupabaseKey(e.target.value)}
+                    placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-emerald-400/60"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
+                >
+                  <CheckCircle2 size={14} />
+                  <span>{configSaved ? 'Saved!' : 'Save Supabase Credentials'}</span>
+                </button>
+              </form>
+            )}
+          </div>
+
+          {isDemoMode && !linkToken && (
             <div className="p-3 rounded-xl bg-black/40 border border-white/5 text-[11px] text-gray-400 space-y-1">
               <div className="flex items-center gap-1.5 text-gray-300 font-medium">
                 <AlertCircle size={13} className="text-amber-400 shrink-0" />
-                <span>Plaid Live Mode Setup</span>
+                <span>Supabase Live Sync Ready</span>
               </div>
               <p>
-                To connect live bank credentials via official OAuth, provide your free Plaid Developer keys (
-                <code>PLAID_CLIENT_ID</code> and <code>PLAID_SECRET</code>) from{' '}
-                <a
-                  href="https://dashboard.plaid.com/developers/keys"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-blue-400 underline inline-flex items-center gap-0.5"
-                >
-                  dashboard.plaid.com <ExternalLink size={10} />
-                </a>{' '}
-                in your deployment environment.
+                To enable live Plaid bank & Robinhood OAuth, deploy the Edge Function included in your repo with{' '}
+                <code>supabase functions deploy plaid</code>.
               </p>
             </div>
           )}
