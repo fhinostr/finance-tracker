@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+/* Custom utility used by the tab bar: hide scrollbar while keeping horizontal scroll */
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+html,
+body {
+  background-color: #000;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
