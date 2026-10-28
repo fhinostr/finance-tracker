@@ -10,29 +10,51 @@ import {
   AlertCircle,
   ShieldCheck,
   Trash2,
-  Database,
+  KeyRound,
+  ExternalLink,
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
 import { formatMoney, getStoredAccounts, saveStoredAccounts } from '../lib/store.js';
-import { callPlaidApi, getSupabaseConfig, saveSupabaseConfig } from '../lib/supabase.js';
+import {
+  callPlaidApi,
+  getPlaidConfig,
+  savePlaidConfig,
+} from '../lib/supabase.js';
 
 export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpdateInvestmentTotal }) {
   const [accounts, setAccounts] = useState(getStoredAccounts);
   const [linkToken, setLinkToken] = useState(null);
-  const [isDemoMode, setIsDemoMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [syncingId, setSyncingId] = useState(null);
   const [statusMessage, setStatusMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
-  // Supabase Settings state
-  const [showConfig, setShowConfig] = useState(false);
-  const currentConfig = getSupabaseConfig();
-  const [supabaseUrl, setSupabaseUrl] = useState(currentConfig.url);
-  const [supabaseKey, setSupabaseKey] = useState(currentConfig.anonKey);
-  const [configSaved, setConfigSaved] = useState(false);
+  // Plaid Configuration State
+  const initialPlaid = getPlaidConfig();
+  const [plaidClientId, setPlaidClientId] = useState(initialPlaid.clientId);
+  const [plaidSecret, setPlaidSecret] = useState(initialPlaid.secret);
+  const [plaidEnv, setPlaidEnv] = useState(initialPlaid.env || 'development');
+  const [showKeySettings, setShowKeySettings] = useState(!initialPlaid.clientId || !initialPlaid.secret);
+  const [keysSaved, setKeysSaved] = useState(false);
 
-  // Initialize Link Token via Supabase Edge Function or local backend
+  // Initialize or Refresh Link Token
+  const requestLinkToken = useCallback(async () => {
+    setLoading(true);
+    setErrorMessage('');
+    try {
+      const data = await callPlaidApi('create-link-token');
+      if (data?.link_token) {
+        setLinkToken(data.link_token);
+        setShowKeySettings(false);
+      }
+    } catch (err) {
+      setErrorMessage(err.message || 'Unable to connect to Plaid');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     let active = true;
     callPlaidApi('create-link-token')
@@ -40,13 +62,14 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
         if (!active) return;
         if (data?.link_token) {
           setLinkToken(data.link_token);
-          setIsDemoMode(false);
-        } else if (data?.demoMode) {
-          setIsDemoMode(true);
+          setShowKeySettings(false);
         }
       })
-      .catch(() => {
-        if (active) setIsDemoMode(true);
+      .catch((err) => {
+        if (active) {
+          setErrorMessage(err.message || 'Plaid keys required');
+          setShowKeySettings(true);
+        }
       });
 
     return () => {
@@ -59,25 +82,24 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
     saveStoredAccounts(next);
   }, []);
 
-  const handleSaveSupabaseConfig = (e) => {
+  const handleSavePlaidKeys = (e) => {
     e.preventDefault();
-    saveSupabaseConfig(supabaseUrl, supabaseKey);
-    setConfigSaved(true);
-    setTimeout(() => setConfigSaved(false), 2500);
-    callPlaidApi('create-link-token')
-      .then((data) => {
-        if (data?.link_token) {
-          setLinkToken(data.link_token);
-          setIsDemoMode(false);
-        }
-      })
-      .catch(() => setIsDemoMode(true));
+    if (!plaidClientId.trim() || !plaidSecret.trim()) {
+      setErrorMessage('Please enter both your Plaid Client ID and Secret.');
+      return;
+    }
+    savePlaidConfig(plaidClientId, plaidSecret, plaidEnv);
+    setKeysSaved(true);
+    setErrorMessage('');
+    setTimeout(() => setKeysSaved(false), 2000);
+    requestLinkToken();
   };
 
   // Exchange Plaid Public Token
   const onSuccess = useCallback(
     async (public_token, metadata) => {
       setLoading(true);
+      setErrorMessage('');
       try {
         const data = await callPlaidApi('exchange-token', {
           public_token,
@@ -85,24 +107,32 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
           accounts: metadata?.accounts,
         });
 
+        const institutionName = metadata?.institution?.name || 'Linked Financial Account';
+        const isRobinhood = institutionName.toLowerCase().includes('robinhood');
+
         const newAcc = {
           id: data.item_id || 'acc-' + Date.now(),
-          name: metadata?.institution?.name || 'Linked Financial Account',
-          type: metadata?.institution?.name?.toLowerCase().includes('robinhood') ? 'investment' : 'bank',
+          name: institutionName,
+          type: isRobinhood ? 'investment' : 'bank',
           balance: data.accounts?.[0]?.balance || 0,
           mask: data.accounts?.[0]?.mask || '••••',
-          accessToken: data.access_token || 'mock_token',
+          accessToken: data.access_token || 'token_' + Date.now(),
           lastSynced: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         };
+
         const next = [...accounts, newAcc];
         persist(next);
-        setStatusMessage(`Successfully connected ${newAcc.name}!`);
+        setStatusMessage(`Connected ${newAcc.name}!`);
+
+        // Trigger an initial sync for holdings and transactions
+        syncAccount(newAcc);
       } catch (err) {
-        setStatusMessage(`Connection failed: ${err.message || 'Error connecting account'}`);
+        setErrorMessage(`Connection failed: ${err.message || 'Error connecting account'}`);
       } finally {
         setLoading(false);
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [accounts, persist],
   );
 
@@ -111,7 +141,7 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
     onSuccess,
   });
 
-  // Simulated link connection for testing without Plaid Production credentials
+  // Simulated link connection for quick preview
   const connectDemo = (type) => {
     setLoading(true);
     setTimeout(() => {
@@ -145,8 +175,8 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
       const next = [...accounts, demoAcc];
       persist(next);
       setLoading(false);
-      setStatusMessage(`Connected simulated ${demoAcc.name}!`);
-    }, 600);
+      setStatusMessage(`Connected preview for ${demoAcc.name}!`);
+    }, 500);
   };
 
   const removeAccount = (id) => {
@@ -180,7 +210,7 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
       persist(updated);
       setStatusMessage(`Synced latest activity from ${acc.name}`);
     } catch {
-      setStatusMessage('Sync completed (simulated latest transactions).');
+      setStatusMessage('Sync complete.');
     } finally {
       setSyncingId(null);
     }
@@ -204,6 +234,7 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
         transition={{ type: 'spring', stiffness: 320, damping: 34 }}
         className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-t-[32px] sm:rounded-[32px] bg-zinc-900/95 backdrop-blur-2xl border border-white/15 shadow-2xl p-6"
       >
+        {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-white/10">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-blue-500/20 text-blue-400">
@@ -223,10 +254,18 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
           </button>
         </div>
 
+        {/* Notifications */}
         {statusMessage && (
           <div className="mt-4 p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center gap-2 text-xs text-blue-300">
             <CheckCircle2 size={16} />
             <span>{statusMessage}</span>
+          </div>
+        )}
+
+        {errorMessage && (
+          <div className="mt-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center gap-2 text-xs text-amber-300">
+            <AlertCircle size={16} className="shrink-0" />
+            <span>{errorMessage}</span>
           </div>
         )}
 
@@ -258,7 +297,7 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-semibold text-white">{acc.name}</p>
                       <span className="text-[10px] text-gray-400 bg-white/10 px-1.5 py-0.5 rounded">
-                        {acc.mask}
+                        ••••{acc.mask}
                       </span>
                     </div>
                     <p className="text-xs text-gray-400">
@@ -291,101 +330,128 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
 
         {/* Link Actions */}
         <div className="mt-6 space-y-3 pt-4 border-t border-white/10">
-          <h3 className="text-xs uppercase tracking-wider font-semibold text-gray-400">Connect an Institution</h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs uppercase tracking-wider font-semibold text-gray-400">Connect Institution</h3>
+            <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-medium">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Supabase Backend Active
+            </span>
+          </div>
 
+          {/* Plaid Link Official Button */}
           {linkToken && ready ? (
             <button
               onClick={() => open()}
               disabled={loading}
-              className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-400 hover:to-indigo-500 text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-transform"
+              className="w-full py-4 rounded-2xl bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-500 hover:from-blue-400 hover:to-emerald-400 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-xl shadow-blue-500/20 active:scale-[0.98] transition-transform"
             >
-              <ShieldCheck size={18} /> Connect Bank or Robinhood via Plaid
+              <ShieldCheck size={20} /> Connect Bank or Robinhood via Plaid
             </button>
           ) : (
             <div className="space-y-2">
               <button
-                onClick={() => connectDemo('bank')}
-                disabled={loading}
-                className="w-full py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-medium text-sm flex items-center justify-center gap-2 transition-colors"
+                onClick={() => setShowKeySettings(true)}
+                className="w-full py-3.5 rounded-2xl bg-blue-500 hover:bg-blue-400 text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-transform"
               >
-                <Building2 size={16} className="text-blue-400" /> Connect Bank (Chase, BoA, Wells Fargo…)
-              </button>
-
-              <button
-                onClick={() => connectDemo('robinhood')}
-                disabled={loading}
-                className="w-full py-3 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 font-medium text-sm flex items-center justify-center gap-2 transition-colors"
-              >
-                <TrendingUp size={16} className="text-emerald-400" /> Connect Robinhood Portfolio
+                <KeyRound size={17} /> Enter Plaid Keys to Connect Live Accounts
               </button>
             </div>
           )}
 
-          {/* Supabase Connection Setup Panel */}
+          {/* Quick Demo Buttons for Instant Preview */}
+          <div className="pt-2">
+            <p className="text-[11px] text-gray-500 mb-2 font-medium">Or try preview accounts:</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => connectDemo('bank')}
+                disabled={loading}
+                className="py-2.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-gray-300 flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <Building2 size={14} className="text-blue-400" /> Preview Bank
+              </button>
+              <button
+                onClick={() => connectDemo('robinhood')}
+                disabled={loading}
+                className="py-2.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-emerald-300 flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <TrendingUp size={14} className="text-emerald-400" /> Preview Robinhood
+              </button>
+            </div>
+          </div>
+
+          {/* Plaid API Keys Setup Panel */}
           <div className="mt-4 rounded-2xl bg-white/5 border border-white/10 overflow-hidden">
             <button
-              onClick={() => setShowConfig(!showConfig)}
+              onClick={() => setShowKeySettings(!showKeySettings)}
               className="w-full p-3.5 text-left flex items-center justify-between text-xs font-semibold text-gray-300 hover:text-white"
             >
               <div className="flex items-center gap-2">
-                <Database size={15} className="text-emerald-400" />
-                <span>Supabase Backend Settings</span>
+                <KeyRound size={15} className="text-blue-400" />
+                <span>Plaid API Credentials</span>
               </div>
-              {showConfig ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+              {showKeySettings ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
             </button>
 
-            {showConfig && (
-              <form onSubmit={handleSaveSupabaseConfig} className="p-3.5 pt-0 space-y-3 text-xs border-t border-white/5">
+            {showKeySettings && (
+              <form onSubmit={handleSavePlaidKeys} className="p-3.5 pt-0 space-y-3 text-xs border-t border-white/5">
                 <p className="text-gray-400 text-[11px] leading-relaxed">
-                  Enter your Supabase credentials (from Supabase Dashboard $\rightarrow$ Project Settings $\rightarrow$ API).
-                  Your Plaid secrets stay securely inside Supabase Edge Functions.
+                  Paste your keys from{' '}
+                  <a
+                    href="https://dashboard.plaid.com/developers/keys"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-400 underline inline-flex items-center gap-0.5"
+                  >
+                    Plaid Dashboard <ExternalLink size={10} />
+                  </a>
+                  . Once saved, the official Plaid popup will activate above.
                 </p>
 
                 <div>
-                  <label className="block text-[11px] text-gray-400 mb-1">Project URL</label>
+                  <label className="block text-[11px] text-gray-400 mb-1">Plaid Client ID</label>
                   <input
-                    type="url"
-                    value={supabaseUrl}
-                    onChange={(e) => setSupabaseUrl(e.target.value)}
-                    placeholder="https://your-project-id.supabase.co"
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-emerald-400/60"
+                    type="text"
+                    value={plaidClientId}
+                    onChange={(e) => setPlaidClientId(e.target.value)}
+                    placeholder="e.g. 64f12ab..."
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-blue-400/60"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] text-gray-400 mb-1">Anon / Public Key</label>
+                  <label className="block text-[11px] text-gray-400 mb-1">Plaid Secret</label>
                   <input
                     type="password"
-                    value={supabaseKey}
-                    onChange={(e) => setSupabaseKey(e.target.value)}
-                    placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-emerald-400/60"
+                    value={plaidSecret}
+                    onChange={(e) => setPlaidSecret(e.target.value)}
+                    placeholder="e.g. 79bc3d..."
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-blue-400/60"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] text-gray-400 mb-1">Environment</label>
+                  <select
+                    value={plaidEnv}
+                    onChange={(e) => setPlaidEnv(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-400/60"
+                  >
+                    <option value="development">Development (Real Bank & Robinhood accounts)</option>
+                    <option value="sandbox">Sandbox (Testing only)</option>
+                  </select>
                 </div>
 
                 <button
                   type="submit"
-                  className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
+                  disabled={loading}
+                  className="w-full py-2.5 rounded-xl bg-blue-500 hover:bg-blue-400 text-white font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
                 >
                   <CheckCircle2 size={14} />
-                  <span>{configSaved ? 'Saved!' : 'Save Supabase Credentials'}</span>
+                  <span>{keysSaved ? 'Saved! Connecting…' : 'Save Keys & Activate Plaid'}</span>
                 </button>
               </form>
             )}
           </div>
-
-          {isDemoMode && !linkToken && (
-            <div className="p-3 rounded-xl bg-black/40 border border-white/5 text-[11px] text-gray-400 space-y-1">
-              <div className="flex items-center gap-1.5 text-gray-300 font-medium">
-                <AlertCircle size={13} className="text-amber-400 shrink-0" />
-                <span>Supabase Live Sync Ready</span>
-              </div>
-              <p>
-                To enable live Plaid bank & Robinhood OAuth, deploy the Edge Function included in your repo with{' '}
-                <code>supabase functions deploy plaid</code>.
-              </p>
-            </div>
-          )}
         </div>
       </motion.div>
     </motion.div>

@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
 const STORAGE_KEY_SUPABASE = 'finance-tracker:supabase-config:v1';
+const STORAGE_KEY_PLAID = 'finance-tracker:plaid-config:v1';
 
 const DEFAULT_SUPABASE_URL = 'https://bilryjjivfslyipdhgsk.supabase.co';
 const DEFAULT_SUPABASE_ANON_KEY =
@@ -35,6 +36,27 @@ export function saveSupabaseConfig(url, anonKey) {
   }
 }
 
+export function getPlaidConfig() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_PLAID);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    // ignore
+  }
+  return { clientId: '', secret: '', env: 'development' };
+}
+
+export function savePlaidConfig(clientId, secret, env = 'development') {
+  try {
+    localStorage.setItem(
+      STORAGE_KEY_PLAID,
+      JSON.stringify({ clientId: clientId.trim(), secret: secret.trim(), env }),
+    );
+  } catch {
+    // ignore
+  }
+}
+
 export function getSupabaseClient() {
   const { url, anonKey } = getSupabaseConfig();
   if (!url || !anonKey) return null;
@@ -42,14 +64,23 @@ export function getSupabaseClient() {
 }
 
 /**
- * Invokes the Plaid edge function or falls back to local /api if configured.
+ * Invokes the Plaid edge function on Supabase.
  * @param {string} action - 'create-link-token' | 'exchange-token' | 'sync'
  * @param {object} payload
  */
 export async function callPlaidApi(action, payload = {}) {
   const { url, anonKey } = getSupabaseConfig();
+  const plaid = getPlaidConfig();
 
-  // If Supabase is configured, invoke the Supabase Edge Function
+  const fullPayload = {
+    action,
+    plaid_client_id: plaid.clientId || undefined,
+    plaid_secret: plaid.secret || undefined,
+    plaid_env: plaid.env || 'development',
+    ...payload,
+  };
+
+  // Invoke Supabase Edge Function
   if (url && anonKey) {
     const endpoint = `${url.replace(/\/$/, '')}/functions/v1/plaid`;
     const res = await fetch(endpoint, {
@@ -59,18 +90,18 @@ export async function callPlaidApi(action, payload = {}) {
         Authorization: `Bearer ${anonKey}`,
         apikey: anonKey,
       },
-      body: JSON.stringify({ action, ...payload }),
+      body: JSON.stringify(fullPayload),
     });
 
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `Supabase function error: ${res.statusText}`);
+      throw new Error(data.error || `Supabase function error: ${res.statusText}`);
     }
 
-    return await res.json();
+    return data;
   }
 
-  // Fallback to local /api route (if running in an environment with serverless routes)
+  // Fallback to local /api route
   const localEndpoints = {
     'create-link-token': '/api/create-link-token',
     'exchange-token': '/api/exchange-token',
@@ -80,14 +111,13 @@ export async function callPlaidApi(action, payload = {}) {
   const localRes = await fetch(localEndpoints[action] || '/api/create-link-token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(fullPayload),
   });
 
+  const localData = await localRes.json().catch(() => ({}));
   if (!localRes.ok) {
-    const err = await localRes.json().catch(() => ({}));
-    throw new Error(err.error || `API error: ${localRes.statusText}`);
+    throw new Error(localData.error || `API error: ${localRes.statusText}`);
   }
 
-  return await localRes.json();
+  return localData;
 }
-

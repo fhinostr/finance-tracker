@@ -15,14 +15,21 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
-  const PLAID_CLIENT_ID = Deno.env.get('PLAID_CLIENT_ID') || '';
-  const PLAID_SECRET = Deno.env.get('PLAID_SECRET') || '';
-  const PLAID_ENV = Deno.env.get('PLAID_ENV') || 'sandbox';
+  let body: Record<string, any> = {};
+  try {
+    body = await req.json();
+  } catch {
+    // ignore
+  }
+
+  const PLAID_CLIENT_ID = Deno.env.get('PLAID_CLIENT_ID') || body.plaid_client_id || '';
+  const PLAID_SECRET = Deno.env.get('PLAID_SECRET') || body.plaid_secret || '';
+  const PLAID_ENV = Deno.env.get('PLAID_ENV') || body.plaid_env || 'sandbox';
 
   if (!PLAID_CLIENT_ID || !PLAID_SECRET) {
     return new Response(
       JSON.stringify({
-        error: 'Plaid secrets (PLAID_CLIENT_ID, PLAID_SECRET) are missing from Supabase Edge Function Secrets.',
+        error: 'Plaid secrets (PLAID_CLIENT_ID, PLAID_SECRET) are missing. Enter them in the app settings below or set them in Supabase Secrets.',
       }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
@@ -41,7 +48,7 @@ Deno.serve(async (req) => {
   const plaidClient = new PlaidApi(configuration);
 
   try {
-    const { action, public_token, access_token, account_type } = await req.json();
+    const { action, public_token, access_token, account_type } = body;
 
     // 1. Create Link Token
     if (action === 'create-link-token') {
@@ -79,7 +86,7 @@ Deno.serve(async (req) => {
           success: true,
           access_token: itemAccessToken,
           item_id: itemId,
-          accounts: accountsResponse.data.accounts.map((acc) => ({
+          accounts: accountsResponse.data.accounts.map((acc: any) => ({
             id: acc.account_id,
             name: acc.name,
             officialName: acc.official_name,
@@ -109,13 +116,13 @@ Deno.serve(async (req) => {
         try {
           const invRes = await plaidClient.investmentsHoldingsGet({ access_token });
           const totalValue = invRes.data.holdings.reduce(
-            (sum, h) => sum + (h.institution_value || 0),
+            (sum: number, h: any) => sum + (h.institution_value || 0),
             0,
           );
           results.investments = {
             totalValue,
-            holdings: invRes.data.holdings.map((h) => {
-              const sec = invRes.data.securities.find((s) => s.security_id === h.security_id);
+            holdings: invRes.data.holdings.map((h: any) => {
+              const sec = invRes.data.securities.find((s: any) => s.security_id === h.security_id);
               return {
                 symbol: sec?.ticker_symbol || 'N/A',
                 name: sec?.name || 'Holding',
@@ -131,7 +138,7 @@ Deno.serve(async (req) => {
 
       try {
         const syncRes = await plaidClient.transactionsSync({ access_token });
-        results.transactions = syncRes.data.added.map((tx) => ({
+        results.transactions = syncRes.data.added.map((tx: any) => ({
           id: tx.transaction_id,
           name: tx.name,
           amount: Math.abs(tx.amount),
@@ -160,4 +167,3 @@ Deno.serve(async (req) => {
     );
   }
 });
-
