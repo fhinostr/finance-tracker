@@ -904,6 +904,7 @@ function WealthTab({
   const totalInvestmentAssets = totalPortfolioValue;
   const totalUserDebts = debts.reduce((sum, d) => sum + debtBalance(d, entries), 0);
   const totalDebts = totalCreditBalance + totalUserDebts;
+  const hasAnyDebts = totalDebts > 0 || debts.length > 0;
   const netWorth = totalBankAssets + totalInvestmentAssets - totalDebts;
 
   const [matchCaptured, setMatchCaptured] = useState(false);

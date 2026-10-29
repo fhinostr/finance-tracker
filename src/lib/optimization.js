@@ -76,8 +76,8 @@ export function generateOptimizationInsights({
   }
 
   // 2. Unnecessary Recurring Transfers / Digital Leakage
-  const transferKeywords = ['transfer', 'venmo', 'cash app', 'zelle'];
-  const transferTxs = getMatchingTransactions(entries, ['transfer_out', 'transfer out']);
+  const transferKeywords = ['transfer_out', 'transfer out', 'transfer', 'venmo', 'cash app', 'zelle'];
+  const transferTxs = getMatchingTransactions(entries, transferKeywords);
   const transferSpend = categoryTotals['Transfer_Out'] || categoryTotals['Transfer Out'] || 0;
 
   if (transferSpend > 50) {
