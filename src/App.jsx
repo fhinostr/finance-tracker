@@ -30,6 +30,8 @@ import {
   X,
   ShieldAlert,
   Clock,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import {
   useFinanceData,
@@ -37,6 +39,7 @@ import {
   monthsToPayoff,
   formatMoney,
   currentMonthKey,
+  formatMonthName,
   getStoredAccounts,
   saveStoredAccounts,
   categorizeAccounts,
@@ -69,6 +72,25 @@ export default function PersonalFinanceTracker() {
 
   const { entries, budgets, addEntry, addEntries, updateBudget, setAllBudgets, removeEntry } = useFinanceData();
 
+  const [selectedMonth, setSelectedMonth] = useState(() => currentMonthKey());
+
+  // Extract distinct calendar months available in entries (plus current month)
+  const availableMonths = useMemo(() => {
+    const set = new Set();
+    const current = currentMonthKey();
+    set.add(current);
+    for (const e of entries) {
+      if (e.date && typeof e.date === 'string' && e.date.length >= 7) {
+        set.add(e.date.slice(0, 7));
+      }
+    }
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [entries]);
+
+  const activeMonth = availableMonths.includes(selectedMonth)
+    ? selectedMonth
+    : (availableMonths[0] || currentMonthKey());
+
   const handleSyncTransactions = (newTxs) => {
     if (!Array.isArray(newTxs) || newTxs.length === 0) return;
     addEntries(newTxs);
@@ -78,7 +100,7 @@ export default function PersonalFinanceTracker() {
     setLinkedAccounts(getStoredAccounts());
   };
 
-  // --- Calculations ---
+  // --- Calculations (Discretized per Month) ---
   const {
     bonusNet,
     currentNet,
@@ -93,8 +115,8 @@ export default function PersonalFinanceTracker() {
   } = useMemo(() => {
     const { totalCreditBalance } = categorizeAccounts(linkedAccounts);
 
-    // Income: recurring monthly salary/retainers + live client hourly deposits this month
-    const thisMonth = currentMonthKey();
+    // Income: recurring monthly salary/retainers + live client hourly deposits for this active month
+    const thisMonth = activeMonth;
     const monthlyIncomes = entries.filter((e) => e.kind === 'income' && e.frequency === 'monthly');
     const base = monthlyIncomes
       .filter((e) => !e.optional)
@@ -134,7 +156,7 @@ export default function PersonalFinanceTracker() {
       (e) =>
         isClientDeposit(e) &&
         e.frequency !== 'monthly' &&
-        (e.date?.startsWith(thisMonth) ?? true),
+        (e.date?.startsWith(thisMonth) ?? false),
     );
     const liveDepositSum = liveDeposits.reduce((sum, e) => sum + e.amount, 0);
 
@@ -144,22 +166,26 @@ export default function PersonalFinanceTracker() {
     const fixed = entries.filter((e) => e.kind === 'expense' && e.frequency === 'monthly');
     const fixedSum = fixed.reduce((sum, e) => sum + e.amount, 0);
 
-    // Variable expenses (one-time expenses this month)
+    // Variable expenses (registered in this active month)
     const variable = entries.filter(
-      (e) => e.kind === 'expense' && e.frequency === 'one-time' && (e.date?.startsWith(thisMonth) ?? true),
+      (e) => e.kind === 'expense' && e.frequency === 'one-time' && (e.date?.startsWith(thisMonth) ?? false),
     );
     const variableSum = variable.reduce((sum, e) => sum + e.amount, 0);
 
     // Debts
     const debtList = entries.filter((e) => e.kind === 'debt');
-    const debtMonthly = debtList.reduce((sum, d) => sum + (d.minPayment || 0) + (d.extraPayment || 0), 0);
+    const monthDebtPayments = entries.filter(
+      (e) => e.kind === 'payment' && (e.date?.startsWith(thisMonth) ?? false),
+    );
+    const monthDebtSum = monthDebtPayments.reduce((sum, p) => sum + p.amount, 0);
+    const debtMonthly = debtList.reduce((sum, d) => sum + (d.minPayment || 0) + (d.extraPayment || 0), 0) || monthDebtSum;
 
     // Cash flow surplus: deducts unpaid credit card balance as what is owed
     const surplus = Math.max(net - fixedSum - variableSum - debtMonthly - totalCreditBalance, 0);
     const toDebt = Math.round(surplus * 0.35);
     const toSavings = surplus - toDebt;
 
-    // Spending by category for variable expenses
+    // Spending by category for variable expenses in this active month
     const catMap = {};
     for (const exp of variable) {
       const cat = exp.category || 'Other';
@@ -181,7 +207,7 @@ export default function PersonalFinanceTracker() {
       savingsSplit: toSavings,
       categoryTotals: catMap,
     };
-  }, [entries, includeBonus, linkedAccounts]);
+  }, [entries, includeBonus, linkedAccounts, activeMonth]);
 
   const optimization = useMemo(() => {
     return generateOptimizationInsights({
@@ -192,8 +218,9 @@ export default function PersonalFinanceTracker() {
       debts,
       currentNet,
       budgets,
+      selectedMonth: activeMonth,
     });
-  }, [entries, categoryTotals, totalVariable, totalFixed, debts, currentNet, budgets]);
+  }, [entries, categoryTotals, totalVariable, totalFixed, debts, currentNet, budgets, activeMonth]);
 
   const openAdd = (autoListen = false) => {
     setSheet({ isOpen: true, autoListen });
@@ -269,6 +296,82 @@ export default function PersonalFinanceTracker() {
           </div>
         </motion.header>
 
+        {/* Month Discretization Navigator */}
+        <div className="p-2.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xl shadow-lg space-y-1.5">
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => {
+                const idx = availableMonths.indexOf(activeMonth);
+                if (idx < availableMonths.length - 1) {
+                  setSelectedMonth(availableMonths[idx + 1]);
+                }
+              }}
+              disabled={availableMonths.indexOf(activeMonth) >= availableMonths.length - 1}
+              aria-label="Previous month"
+              className="p-1.5 rounded-xl text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-25 disabled:pointer-events-none transition-all active:scale-95"
+            >
+              <ChevronLeft size={16} />
+            </button>
+
+            <div className="flex items-center gap-2">
+              <Calendar size={14} className="text-blue-400" />
+              <span className="text-xs font-bold text-white tracking-wide">
+                {formatMonthName(activeMonth)}
+              </span>
+              {activeMonth === currentMonthKey() ? (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                  Current Month
+                </span>
+              ) : (
+                <button
+                  onClick={() => setSelectedMonth(currentMonthKey())}
+                  className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-white/10 text-gray-300 hover:text-white border border-white/15 transition-colors"
+                >
+                  Go to Current
+                </button>
+              )}
+            </div>
+
+            <button
+              onClick={() => {
+                const idx = availableMonths.indexOf(activeMonth);
+                if (idx > 0) {
+                  setSelectedMonth(availableMonths[idx - 1]);
+                }
+              }}
+              disabled={availableMonths.indexOf(activeMonth) <= 0}
+              aria-label="Next month"
+              className="p-1.5 rounded-xl text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-25 disabled:pointer-events-none transition-all active:scale-95"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+
+          {availableMonths.length > 1 && (
+            <div className="flex gap-1 overflow-x-auto no-scrollbar pt-1 border-t border-white/5">
+              {availableMonths.map((m) => {
+                const isSelected = m === activeMonth;
+                const isCurrent = m === currentMonthKey();
+                const parts = m.split('-');
+                const shortLabel = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+                return (
+                  <button
+                    key={m}
+                    onClick={() => setSelectedMonth(m)}
+                    className={`px-2.5 py-0.5 rounded-lg text-[10px] font-semibold transition-all shrink-0 ${
+                      isSelected
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    {shortLabel} {isCurrent && '•'}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         {/* Tab Navigation (iOS Segmented Control Style) */}
         <div className="flex bg-white/10 backdrop-blur-xl p-1 rounded-2xl border border-white/10 shadow-inner overflow-x-auto no-scrollbar">
           {[
@@ -322,6 +425,7 @@ export default function PersonalFinanceTracker() {
                 entries={entries}
                 linkedAccounts={linkedAccounts}
                 optimization={optimization}
+                activeMonth={activeMonth}
                 onNavigateTab={setActiveTab}
                 onOpenLink={() => {
                   setLinkedAccounts(getStoredAccounts());
@@ -339,6 +443,7 @@ export default function PersonalFinanceTracker() {
                 onSetAllBudgets={setAllBudgets}
                 categoryTotals={categoryTotals}
                 totalVariable={totalVariable}
+                activeMonth={activeMonth}
                 onNavigateTab={setActiveTab}
               />
             )}
@@ -349,6 +454,7 @@ export default function PersonalFinanceTracker() {
                 debts={debts}
                 entries={entries}
                 linkedAccounts={linkedAccounts}
+                activeMonth={activeMonth}
                 onDelete={removeEntry}
                 onAdd={() => openAdd(false)}
                 onAddEntry={addEntry}
@@ -453,16 +559,29 @@ function DashboardTab({
   entries,
   linkedAccounts = [],
   optimization,
+  activeMonth,
   onNavigateTab,
   onOpenLink,
   onDelete,
   onAdd,
 }) {
+  const [activityScope, setActivityScope] = useState('month');
   const allCategories = Object.keys(categoryTotals);
-  const recentTransactions = entries
-    .filter((e) => e.kind !== 'debt')
-    .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
-    .slice(0, 10);
+
+  const monthTransactions = useMemo(() => {
+    return entries
+      .filter((e) => e.kind !== 'debt' && (!e.date || e.date.startsWith(activeMonth)))
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  }, [entries, activeMonth]);
+
+  const allRecentTransactions = useMemo(() => {
+    return entries
+      .filter((e) => e.kind !== 'debt')
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+      .slice(0, 25);
+  }, [entries]);
+
+  const displayedTransactions = activityScope === 'month' ? monthTransactions : allRecentTransactions;
 
   const {
     bankAccounts,
@@ -621,13 +740,13 @@ function DashboardTab({
 
       {/* Variable Expenses */}
       <GlassCard
-        title="Variable Expenses"
+        title={`Variable Expenses (${formatMonthName(activeMonth)})`}
         icon={<CreditCard className="text-blue-400" />}
         amount={formatMoney(totalVariable)}
       >
         <div className="space-y-3.5">
           {allCategories.length === 0 ? (
-            <p className="text-sm text-gray-500">No variable expenses logged this month.</p>
+            <p className="text-sm text-gray-500 py-2">No variable expenses logged for {formatMonthName(activeMonth)}.</p>
           ) : (
             allCategories.map((cat) => {
               const spent = categoryTotals[cat] || 0;
@@ -673,17 +792,42 @@ function DashboardTab({
         </div>
       </GlassCard>
 
-      {/* Recent Activity List */}
+      {/* Recent Activity List (Discretized per Month) */}
       <GlassCard
         title="Recent Activity"
         icon={<Layers className="text-indigo-400" />}
-        amount={`${recentTransactions.length} items`}
+        amount={`${displayedTransactions.length} items`}
       >
-        {recentTransactions.length === 0 ? (
-          <p className="text-sm text-gray-500">No transactions recorded yet.</p>
+        <div className="flex items-center gap-1.5 bg-black/40 p-1 rounded-xl border border-white/5 text-[11px] mb-2.5">
+          <button
+            onClick={() => setActivityScope('month')}
+            className={`flex-1 py-1 px-2 rounded-lg font-medium transition-all text-center ${
+              activityScope === 'month'
+                ? 'bg-white/20 text-white font-semibold shadow-sm'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            {formatMonthName(activeMonth)} ({monthTransactions.length})
+          </button>
+          <button
+            onClick={() => setActivityScope('all')}
+            className={`flex-1 py-1 px-2 rounded-lg font-medium transition-all text-center ${
+              activityScope === 'all'
+                ? 'bg-white/20 text-white font-semibold shadow-sm'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            All Activity ({entries.filter((e) => e.kind !== 'debt').length})
+          </button>
+        </div>
+
+        {displayedTransactions.length === 0 ? (
+          <p className="text-sm text-gray-500 py-3 text-center">
+            No transactions recorded for {activityScope === 'month' ? formatMonthName(activeMonth) : 'this account'}.
+          </p>
         ) : (
           <div className="space-y-2 mt-2">
-            {recentTransactions.map((item) => {
+            {displayedTransactions.map((item) => {
               const isIncome = item.kind === 'income';
               const catStyle = getCategoryStyle(item.category || item.kind, item.kind);
               return (
@@ -816,7 +960,7 @@ function SubscriptionsAndDebtTab({
     return list;
   }, [entries, fixedExpenses]);
 
-  // 2. Auto-detected Debt Payments from live activity
+  // 2. Auto-detected Debt Payments from live activity - Discretized per month
   const autoDetectedDebtPayments = useMemo(() => {
     return entries.filter((e) => {
       if (e.kind === 'payment') return true;
@@ -835,6 +979,18 @@ function SubscriptionsAndDebtTab({
     });
   }, [entries]);
 
+  // Group auto-detected loan payments to get monthly payment per loan (not summing multiple months)
+  const distinctAutoLoans = useMemo(() => {
+    const loanMap = new Map();
+    for (const e of autoDetectedDebtPayments) {
+      const key = (e.name || 'loan').slice(0, 16).toLowerCase();
+      if (!loanMap.has(key) || (e.date && e.date > (loanMap.get(key).date || ''))) {
+        loanMap.set(key, e);
+      }
+    }
+    return Array.from(loanMap.values());
+  }, [autoDetectedDebtPayments]);
+
   // 3. Combined list of all recognized & tracked subscriptions
   const allSubscriptions = useMemo(() => {
     return [
@@ -848,7 +1004,7 @@ function SubscriptionsAndDebtTab({
     0,
   );
 
-  const autoLoanTotal = autoDetectedDebtPayments.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  const autoLoanTotal = distinctAutoLoans.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
   const monthlyDebtTotal = debts.reduce(
     (sum, d) => sum + (d.minPayment || 0) + (d.extraPayment || 0),
     0,
@@ -935,7 +1091,10 @@ function SubscriptionsAndDebtTab({
         {[
           { id: 'all', label: 'All Commitments' },
           { id: 'subscriptions', label: `Subscriptions (${allSubscriptions.length})` },
-          { id: 'debts', label: `Debts & Loans (${debts.length + (totalCreditBalance > 0 ? 1 : 0)})` },
+          {
+            id: 'debts',
+            label: `Debts & Loans (${debts.length + (totalCreditBalance > 0 ? 1 : 0) + (distinctAutoLoans.length > 0 && debts.length === 0 ? distinctAutoLoans.length : 0)})`,
+          },
         ].map((f) => (
           <button
             key={f.id}
@@ -1086,8 +1245,8 @@ function SubscriptionsAndDebtTab({
             </div>
           )}
 
-          {/* Auto-detected Loan Payments from Activity */}
-          {autoDetectedDebtPayments.length > 0 && (
+          {/* Auto-detected Loan Payments from Activity (Discretized Monthly Rate) */}
+          {distinctAutoLoans.length > 0 && (
             <div className="p-4 rounded-3xl bg-zinc-900/85 backdrop-blur-2xl border border-rose-500/25 shadow-xl space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -1099,17 +1258,17 @@ function SubscriptionsAndDebtTab({
                       Auto-Detected Loan Payments
                     </h3>
                     <p className="text-[10px] text-gray-400">
-                      Recent debt payments detected from activity
+                      Monthly loan payment rate detected from statements
                     </p>
                   </div>
                 </div>
                 <span className="text-xs font-extrabold text-rose-400">
-                  {formatMoney(autoLoanTotal)}
+                  {formatMoney(autoLoanTotal)}/mo
                 </span>
               </div>
 
               <div className="space-y-2">
-                {autoDetectedDebtPayments.map((item) => {
+                {distinctAutoLoans.map((item) => {
                   const isPromoted = promotedIds.has(item.id);
                   return (
                     <div
@@ -1926,7 +2085,10 @@ function OptimizationTab({
   budgets,
   onUpdateBudget,
   onSetAllBudgets,
-  onNavigateTab,
+  categoryTotals: _categoryTotals,
+  totalVariable: _totalVariable,
+  activeMonth,
+  onNavigateTab: _onNavigateTab,
 }) {
   const [appliedAll, setAppliedAll] = useState(false);
   const [appliedCategory, setAppliedCategory] = useState({});
@@ -1969,9 +2131,16 @@ function OptimizationTab({
               <Sparkles size={22} />
             </div>
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-300">
-                Spending Optimization & Goal Accelerators
-              </p>
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-300">
+                  Spending Optimization
+                </p>
+                {activeMonth && (
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-500/25 text-indigo-200 border border-indigo-500/30">
+                    {formatMonthName(activeMonth)}
+                  </span>
+                )}
+              </div>
               <h2 className="text-2xl font-extrabold text-white">
                 +{formatMoney(monthlySavings)}
                 <span className="text-xs text-gray-400 font-normal"> / month recoverable cash</span>

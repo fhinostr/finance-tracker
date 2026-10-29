@@ -204,6 +204,16 @@ export function toISODate(date = new Date()) {
 
 export const currentMonthKey = () => toISODate().slice(0, 7);
 
+export function formatMonthName(monthKey) {
+  if (!monthKey || typeof monthKey !== 'string') return '';
+  const parts = monthKey.split('-');
+  if (parts.length < 2) return monthKey;
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const date = new Date(year, month, 1);
+  return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
 export function formatMoney(value, { cents = 'auto' } = {}) {
   const n = Number(value) || 0;
   const showCents = cents === 'always' || (cents === 'auto' && Math.round(n * 100) % 100 !== 0);

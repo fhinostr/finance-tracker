@@ -7,10 +7,11 @@
 
 import { formatMoney } from './store.js';
 
-function getMatchingTransactions(entries = [], keywords = []) {
+function getMatchingTransactions(entries = [], keywords = [], selectedMonth = null) {
   return entries
     .filter((e) => {
-      if (e.kind === 'income') return false;
+      if (e.kind === 'income' || e.kind === 'debt') return false;
+      if (selectedMonth && e.date && !e.date.startsWith(selectedMonth)) return false;
       const cat = (e.category || '').toLowerCase();
       const name = (e.name || '').toLowerCase();
       return keywords.some((kw) => cat.includes(kw) || name.includes(kw));
@@ -27,6 +28,7 @@ export function generateOptimizationInsights({
   debts = [],
   currentNet = 0,
   budgets: _budgets = {},
+  selectedMonth = null,
 }) {
   const suggestions = [];
   const recommendedBudgets = {};
@@ -47,13 +49,32 @@ export function generateOptimizationInsights({
   // TYPE 1: "CUT THIS OUT" (100% Elimination Candidates)
   // ----------------------------------------------------
 
-  // 1. Bank & Service Fees (100% Avoidable Waste)
+  // 1. Bank & Service Fees (100% Avoidable Waste) - Calculated Strictly Per Month
   const feeKeywords = ['fee', 'overdraft', 'atm fee', 'service charge', 'bank fee', 'late fee'];
-  const feeTxs = getMatchingTransactions(entries, feeKeywords);
-  const totalFees = feeTxs.reduce((sum, e) => sum + (Number(e.amount) || 0), 0) ||
-    (categoryTotals['Bank_Fees'] || categoryTotals['Bank Fees'] || 0);
+  const feeTxsThisMonth = getMatchingTransactions(entries, feeKeywords, selectedMonth);
+  const allFeeTxs = getMatchingTransactions(entries, feeKeywords, null); // historical transactions
 
-  if (totalFees > 0) {
+  // Monthly spend in active month (or direct category total)
+  const monthFeeSpend =
+    (categoryTotals['Bank_Fees'] || categoryTotals['Bank Fees'] || 0) ||
+    feeTxsThisMonth.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+  // Calculate historical frequency to establish realistic monthly recurrence (not summing 3 months into 1)
+  const distinctFeeMonths = new Set(
+    allFeeTxs.map((e) => e.date?.slice(0, 7)).filter(Boolean),
+  ).size || 1;
+  const totalHistoricalFees = allFeeTxs.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  const avgMonthlyFee = Math.round(totalHistoricalFees / Math.max(distinctFeeMonths, 1));
+
+  // The discretized monthly fee rate
+  const monthlyFeeRate = monthFeeSpend > 0 ? monthFeeSpend : (avgMonthlyFee > 0 ? avgMonthlyFee : 0);
+
+  if (monthlyFeeRate > 0) {
+    const reversalNote =
+      distinctFeeMonths > 1 && totalHistoricalFees > monthlyFeeRate
+        ? `Call your bank to request a courtesy fee reversal for ${formatMoney(totalHistoricalFees)} (${distinctFeeMonths} months of $${monthlyFeeRate}/mo detected). Keep required minimum balances to eliminate this charge going forward.`
+        : `Call your bank to request a one-time courtesy fee reversal for ${formatMoney(monthlyFeeRate)}. Keep required minimum balances or link accounts to ensure monthly fees stay at $0.`;
+
     suggestions.push({
       id: 'cut-fees',
       actionType: 'cut',
@@ -61,23 +82,23 @@ export function generateOptimizationInsights({
       title: 'Eliminate Bank & Service Charges',
       category: 'Bank Fees',
       categoryKey: 'Bank_Fees',
-      currentSpend: totalFees,
+      currentSpend: monthlyFeeRate,
       targetSpend: 0,
-      monthlySavings: totalFees,
-      annualSavings: totalFees * 12,
+      monthlySavings: monthlyFeeRate,
+      annualSavings: monthlyFeeRate * 12,
       impact: 'quick-win',
-      exactAction: `Call your bank to request a one-time courtesy fee reversal for ${formatMoney(totalFees)}. Keep minimum balances or link accounts to ensure fees stay at $0.`,
+      exactAction: reversalNote,
       goalTarget: 'car',
-      goalImpact: `Routes +${formatMoney(totalFees)}/mo straight to your 2018 Kia Sportage payoff.`,
+      goalImpact: `Routes +${formatMoney(monthlyFeeRate)}/mo straight to your 2018 Kia Sportage payoff.`,
       actionLabel: 'Set Cap to $0 (Cut Out)',
       recommendedBudget: 0,
-      topTransactions: feeTxs,
+      topTransactions: feeTxsThisMonth.length > 0 ? feeTxsThisMonth : allFeeTxs.slice(0, 2),
     });
   }
 
   // 2. Unnecessary Recurring Transfers / Digital Leakage
   const transferKeywords = ['transfer_out', 'transfer out', 'transfer', 'venmo', 'cash app', 'zelle'];
-  const transferTxs = getMatchingTransactions(entries, transferKeywords);
+  const transferTxs = getMatchingTransactions(entries, transferKeywords, selectedMonth);
   const transferSpend = categoryTotals['Transfer_Out'] || categoryTotals['Transfer Out'] || 0;
 
   if (transferSpend > 50) {
@@ -95,7 +116,7 @@ export function generateOptimizationInsights({
       monthlySavings: savings,
       annualSavings: savings * 12,
       impact: 'high',
-      exactAction: `Audit ${formatMoney(transferSpend)} in outgoing transfers. Eliminate casual spot-lending and non-essential peer pay outs to keep cash in your account.`,
+      exactAction: `Audit ${formatMoney(transferSpend)} in outgoing transfers for this month. Eliminate casual spot-lending and non-essential peer pay outs to keep cash in your account.`,
       goalTarget: 'hysa',
       goalImpact: `Builds your HYSA Move-In Buffer +${formatMoney(savings)}/mo faster.`,
       actionLabel: `Cap Transfers at ${formatMoney(target)}`,
@@ -109,7 +130,7 @@ export function generateOptimizationInsights({
   // ----------------------------------------------------
 
   // 3. Travel & Transportation Spending
-  const travelTxs = getMatchingTransactions(entries, ['travel', 'flight', 'airline', 'hotel', 'airbnb']);
+  const travelTxs = getMatchingTransactions(entries, ['travel', 'flight', 'airline', 'hotel', 'airbnb'], selectedMonth);
   const travelSpend = categoryTotals['Travel'] || 0;
 
   if (travelSpend > 150) {
@@ -137,7 +158,7 @@ export function generateOptimizationInsights({
   }
 
   // 4. Food & Drink / Takeout Optimization
-  const foodTxs = getMatchingTransactions(entries, ['food', 'dining', 'restaurant', 'doordash', 'uber eats', 'grubhub']);
+  const foodTxs = getMatchingTransactions(entries, ['food', 'dining', 'restaurant', 'doordash', 'uber eats', 'grubhub'], selectedMonth);
   const foodSpend = categoryTotals['Food_and_Drink'] || categoryTotals['Food & Drink'] || 0;
 
   if (foodSpend > 75) {
@@ -165,7 +186,7 @@ export function generateOptimizationInsights({
   }
 
   // 5. General Merchandise & Online Shopping
-  const merchTxs = getMatchingTransactions(entries, ['merchandise', 'shopping', 'amazon', 'target', 'walmart']);
+  const merchTxs = getMatchingTransactions(entries, ['merchandise', 'shopping', 'amazon', 'target', 'walmart'], selectedMonth);
   const merchSpend = categoryTotals['General_Merchandise'] || categoryTotals['General Merchandise'] || 0;
 
   if (merchSpend > 100) {
@@ -193,7 +214,7 @@ export function generateOptimizationInsights({
   }
 
   // 6. General Services & Subscriptions
-  const servicesTxs = getMatchingTransactions(entries, ['service', 'subscription', 'software', 'cloud', 'membership']);
+  const servicesTxs = getMatchingTransactions(entries, ['service', 'subscription', 'software', 'cloud', 'membership'], selectedMonth);
   const servicesSpend = categoryTotals['General_Services'] || categoryTotals['General Services'] || 0;
 
   if (servicesSpend > 100) {
@@ -221,7 +242,7 @@ export function generateOptimizationInsights({
   }
 
   // 7. Entertainment & Media Streaming
-  const entTxs = getMatchingTransactions(entries, ['entertainment', 'streaming', 'netflix', 'spotify', 'movie', 'games']);
+  const entTxs = getMatchingTransactions(entries, ['entertainment', 'streaming', 'netflix', 'spotify', 'movie', 'games'], selectedMonth);
   const entSpend = categoryTotals['Entertainment'] || 0;
 
   if (entSpend > 25) {
@@ -308,7 +329,7 @@ export function generateOptimizationInsights({
   if (wantsPct > 40) healthScore -= 15;
   else if (wantsPct <= 30) healthScore += 10;
   if (needsPct > 60) healthScore -= 15;
-  if (totalFees > 0) healthScore -= 10;
+  if (monthlyFeeRate > 0) healthScore -= 10;
   if (totalPotentialSavings > 250) healthScore -= 5;
   healthScore = Math.min(Math.max(healthScore, 40), 98);
 
