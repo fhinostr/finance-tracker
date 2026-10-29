@@ -25,8 +25,9 @@ import {
   Info,
   ShieldCheck,
   Scissors,
-  ShieldAlert,
-  ArrowUpRight,
+  Edit2,
+  Check,
+  X,
 } from 'lucide-react';
 import {
   useFinanceData,
@@ -35,6 +36,7 @@ import {
   formatMoney,
   currentMonthKey,
   getStoredAccounts,
+  saveStoredAccounts,
   categorizeAccounts,
 } from './lib/store.js';
 import { generateOptimizationInsights } from './lib/optimization.js';
@@ -908,6 +910,18 @@ function WealthTab({
   const netWorth = totalBankAssets + totalInvestmentAssets - totalDebts;
 
   const [matchCaptured, setMatchCaptured] = useState(false);
+  const [editingCardId, setEditingCardId] = useState(null);
+  const [editingCardVal, setEditingCardVal] = useState('');
+
+  const handleSaveCardBalance = (accId) => {
+    const num = parseFloat(editingCardVal);
+    if (!isNaN(num)) {
+      const current = getStoredAccounts();
+      const next = current.map((a) => (a.id === accId ? { ...a, balance: num, lastSynced: 'Edited just now' } : a));
+      saveStoredAccounts(next);
+    }
+    setEditingCardId(null);
+  };
 
   // Dynamic Monthly Cash Surplus
   const activeMonthlySurplus = Math.max(cashSurplus, 0);
@@ -1267,7 +1281,55 @@ function WealthTab({
             key={acc.id}
             title={acc.name}
             icon={<TrendingUp className="text-emerald-400" />}
-            amount={formatMoney(acc.balance)}
+            amount={
+              editingCardId === acc.id ? (
+                <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                  <span className="text-xs text-gray-400">$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    autoFocus
+                    value={editingCardVal}
+                    onChange={(e) => setEditingCardVal(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveCardBalance(acc.id);
+                      if (e.key === 'Escape') setEditingCardId(null);
+                    }}
+                    className="w-24 px-2 py-0.5 rounded-lg bg-black/70 border border-emerald-500 text-xs text-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleSaveCardBalance(acc.id)}
+                    className="p-1 rounded-md bg-emerald-500 text-black hover:bg-emerald-400"
+                  >
+                    <Check size={12} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingCardId(null)}
+                    className="p-1 rounded-md bg-white/10 text-gray-400 hover:text-white"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span>{formatMoney(acc.balance)}</span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingCardId(acc.id);
+                      setEditingCardVal(String(acc.balance));
+                    }}
+                    title="Edit balance directly"
+                    className="p-1 rounded-lg hover:bg-white/10 text-gray-400 hover:text-emerald-400 transition-colors"
+                  >
+                    <Edit2 size={13} />
+                  </button>
+                </div>
+              )
+            }
           >
             <div className="space-y-3">
               <div className="flex justify-between items-center text-xs text-gray-400">
@@ -1343,7 +1405,52 @@ function WealthTab({
                     <p className="text-[10px] text-gray-500">••••{acc.mask}</p>
                   </div>
                 </div>
-                <span className="text-xs font-bold text-white">{formatMoney(acc.balance)}</span>
+                {editingCardId === acc.id ? (
+                  <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                    <span className="text-xs text-gray-400">$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      autoFocus
+                      value={editingCardVal}
+                      onChange={(e) => setEditingCardVal(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveCardBalance(acc.id);
+                        if (e.key === 'Escape') setEditingCardId(null);
+                      }}
+                      className="w-20 px-2 py-0.5 rounded bg-black/60 border border-blue-500 text-xs text-white"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleSaveCardBalance(acc.id)}
+                      className="p-1 rounded bg-blue-500 text-white hover:bg-blue-400"
+                    >
+                      <Check size={11} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingCardId(null)}
+                      className="p-1 rounded bg-white/10 text-gray-400 hover:text-white"
+                    >
+                      <X size={11} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-white">{formatMoney(acc.balance)}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingCardId(acc.id);
+                        setEditingCardVal(String(acc.balance));
+                      }}
+                      title="Edit balance directly"
+                      className="text-gray-500 hover:text-blue-400 transition-colors"
+                    >
+                      <Edit2 size={11} />
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>

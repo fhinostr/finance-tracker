@@ -139,6 +139,7 @@ Deno.serve(async (req) => {
           holdingsList = (invRes.data.holdings || []).map((h: any) => {
             const sec = invRes.data.securities?.find((s: any) => s.security_id === h.security_id);
             return {
+              account_id: h.account_id,
               symbol: sec?.ticker_symbol || 'N/A',
               name: sec?.name || 'Holding',
               quantity: h.quantity,
@@ -162,15 +163,23 @@ Deno.serve(async (req) => {
       // Always fetch fresh account balances (checking, savings, credit cards, investments)
       try {
         const accRes = await plaidClient.accountsGet({ access_token });
+        const allHoldings = (results.investments as any)?.holdings || [];
+
         results.accounts = accRes.data.accounts.map((acc: any) => {
           let balance = acc.balances.current;
+          const accountHoldings = allHoldings.filter((h: any) => h.account_id === acc.account_id);
+          const accountHoldingsVal = accountHoldings.reduce((sum: number, h: any) => sum + (Number(h.value) || 0), 0);
+
           if (acc.type === 'depository' && acc.balances.available != null) {
             // Prioritize available balance for checking/savings so pending debits/purchases are deducted immediately
             balance = acc.balances.available;
           } else if (acc.type === 'credit' && acc.balances.limit != null && acc.balances.available != null) {
             const pendingOwed = acc.balances.limit - acc.balances.available;
             balance = Math.max(acc.balances.current || 0, pendingOwed);
+          } else if ((acc.type === 'investment' || acc.subtype === 'brokerage' || acc.subtype === 'crypto') && (balance == null || balance === 0) && accountHoldingsVal > 0) {
+            balance = accountHoldingsVal;
           }
+
           return {
             id: acc.account_id,
             name: acc.name,
@@ -182,18 +191,19 @@ Deno.serve(async (req) => {
             available: acc.balances.available,
             limit: acc.balances.limit,
             mask: acc.mask,
+            holdings: accountHoldings,
           };
         });
 
-        // If Robinhood totalValue was 0 from holdings, check account balance
+        // If Robinhood totalValue was 0 from holdings, sum up individual account balances
         if (account_type === 'investment' && results.investments) {
           const inv = results.investments as { totalValue: number; holdings: any[] };
           if (inv.totalValue === 0) {
-            const invAcc = accRes.data.accounts.find(
-              (a: any) => a.type === 'investment' || a.subtype === 'brokerage',
-            );
-            if (invAcc && invAcc.balances?.current != null) {
-              inv.totalValue = Number(invAcc.balances.current) || 0;
+            const totalFromAccs = accRes.data.accounts
+              .filter((a: any) => a.type === 'investment' || a.subtype === 'brokerage' || a.subtype === 'crypto')
+              .reduce((sum: number, a: any) => sum + (Number(a.balances?.current) || 0), 0);
+            if (totalFromAccs > 0) {
+              inv.totalValue = totalFromAccs;
             }
           }
         }

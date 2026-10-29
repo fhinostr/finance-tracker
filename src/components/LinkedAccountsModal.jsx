@@ -219,15 +219,27 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
           const rawType = (da.type || '').toLowerCase();
           const rawSub = (da.subtype || '').toLowerCase();
           const isCredit = rawType === 'credit' || rawSub.includes('credit');
-          const isInv = isRobinhood || rawType === 'investment' || rawSub.includes('brokerage');
+          const isInv = isRobinhood || rawType === 'investment' || rawSub.includes('brokerage') || rawSub.includes('crypto');
           const resolvedType = isInv ? 'investment' : isCredit ? 'credit' : 'bank';
 
-          let balance = Number(da.balance) || 0;
+          // Preserve the specific account's balance from Plaid
+          let balance = Number(da.balance != null ? da.balance : da.current) || 0;
           if (resolvedType === 'bank' && da.available != null) {
             balance = Number(da.available);
           }
-          if (resolvedType === 'investment' && data.investments?.totalValue) {
-            balance = data.investments.totalValue;
+
+          // If this account has its own specific holdings, use their sum if balance is zero
+          const accHoldings = Array.isArray(da.holdings) && da.holdings.length > 0
+            ? da.holdings
+            : (data.investments?.holdings || []).filter((h) => h.account_id === da.id);
+
+          if (resolvedType === 'investment' && balance === 0 && accHoldings.length > 0) {
+            balance = accHoldings.reduce((sum, h) => sum + (Number(h.value) || 0), 0);
+          }
+
+          // ONLY if there is strictly 1 single investment account, and its balance is 0, fall back to totalValue
+          if (resolvedType === 'investment' && balance === 0 && data.accounts.length === 1 && data.investments?.totalValue) {
+            balance = Number(data.investments.totalValue) || 0;
           }
 
           const existingIdx = updated.findIndex(
@@ -243,6 +255,7 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
             available: da.available,
             mask: da.mask || '••••',
             accessToken: acc.accessToken,
+            holdings: accHoldings,
             lastSynced: 'Just now',
           };
 
@@ -253,10 +266,12 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
           }
         });
       } else {
+        const siblingAccounts = updated.filter((s) => s.accessToken === acc.accessToken);
         updated = updated.map((a) => {
           if (a.id === acc.id) {
             let bal = a.balance;
-            if (a.type === 'investment' && data.investments?.totalValue !== undefined) {
+            // Never overwrite with totalValue if multiple accounts share this token!
+            if (a.type === 'investment' && siblingAccounts.length === 1 && data.investments?.totalValue !== undefined) {
               bal = data.investments.totalValue;
             }
             return { ...a, balance: Number(bal) || 0, lastSynced: 'Just now' };
