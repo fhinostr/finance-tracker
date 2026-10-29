@@ -835,14 +835,26 @@ function SubscriptionsAndDebtTab({
     });
   }, [entries]);
 
-  const autoLoanTotal = autoDetectedDebtPayments.reduce((sum, e) => sum + e.amount, 0);
+  // 3. Combined list of all recognized & tracked subscriptions
+  const allSubscriptions = useMemo(() => {
+    return [
+      ...fixedExpenses.map((sub) => ({ ...sub, isTracked: true, source: 'tracked' })),
+      ...autoDetectedSubscriptions.map((sub) => ({ ...sub, isTracked: false, source: 'auto' })),
+    ];
+  }, [fixedExpenses, autoDetectedSubscriptions]);
 
-  // Total commitments
+  const totalSubscriptionsAmount = allSubscriptions.reduce(
+    (sum, s) => sum + (Number(s.amount) || 0),
+    0,
+  );
+
+  const autoLoanTotal = autoDetectedDebtPayments.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
   const monthlyDebtTotal = debts.reduce(
     (sum, d) => sum + (d.minPayment || 0) + (d.extraPayment || 0),
     0,
-  );
-  const totalMonthlyCommitments = totalFixed + monthlyDebtTotal;
+  ) || autoLoanTotal;
+
+  const totalMonthlyCommitments = totalSubscriptionsAmount + monthlyDebtTotal;
 
   const handlePromoteSubscription = (item) => {
     if (onAddEntry) {
@@ -905,7 +917,7 @@ function SubscriptionsAndDebtTab({
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
           <div className="p-2.5 bg-black/40 rounded-xl border border-white/5">
             <span className="text-gray-400 block text-[10px]">Subscriptions & Bills</span>
-            <span className="font-bold text-white">{formatMoney(totalFixed)}</span>
+            <span className="font-bold text-white">{formatMoney(totalSubscriptionsAmount)}</span>
           </div>
           <div className="p-2.5 bg-black/40 rounded-xl border border-white/5">
             <span className="text-gray-400 block text-[10px]">Debt Payments</span>
@@ -922,7 +934,7 @@ function SubscriptionsAndDebtTab({
       <div className="flex bg-white/5 p-1 rounded-2xl border border-white/10 text-xs">
         {[
           { id: 'all', label: 'All Commitments' },
-          { id: 'subscriptions', label: `Subscriptions (${fixedExpenses.length + autoDetectedSubscriptions.length})` },
+          { id: 'subscriptions', label: `Subscriptions (${allSubscriptions.length})` },
           { id: 'debts', label: `Debts & Loans (${debts.length + (totalCreditBalance > 0 ? 1 : 0)})` },
         ].map((f) => (
           <button
@@ -945,18 +957,21 @@ function SubscriptionsAndDebtTab({
       {showSubs && (
         <div className="space-y-4">
           <GlassCard
-            title="Tracked Subscriptions & Bills"
+            title="Subscriptions & Recurring Bills"
             icon={<Repeat className="text-orange-400" />}
-            amount={formatMoney(totalFixed)}
+            amount={formatMoney(totalSubscriptionsAmount)}
           >
             <div className="space-y-2.5 mt-2">
-              {fixedExpenses.length === 0 ? (
-                <p className="text-xs text-gray-500 py-2">
-                  No monthly subscriptions tracked yet. Tap below or review auto-detected charges.
+              {allSubscriptions.length === 0 ? (
+                <p className="text-xs text-gray-500 py-3 text-center">
+                  No monthly recurring expenses or subscriptions recognized yet. Tap below to add one.
                 </p>
               ) : (
-                fixedExpenses.map((sub) => {
+                allSubscriptions.map((sub) => {
                   const catStyle = getCategoryStyle(sub.category || 'Subscriptions');
+                  const isAuto = !sub.isTracked;
+                  const isPromoted = promotedIds.has(sub.id);
+
                   return (
                     <div
                       key={sub.id}
@@ -969,19 +984,51 @@ function SubscriptionsAndDebtTab({
                           {formatCategory(sub.category || 'Subscription')}
                         </span>
                         <div className="min-w-0">
-                          <p className="text-xs font-semibold text-white truncate">{sub.name}</p>
-                          <p className="text-[10px] text-gray-500">{sub.note || 'Monthly recurring'}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs font-semibold text-white truncate">{sub.name}</p>
+                            {isAuto && (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 border border-violet-500/30 shrink-0">
+                                Recognized
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-gray-500">
+                            {isAuto ? 'Auto-recognized from activity' : sub.note || 'Monthly recurring'}
+                          </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <p className="text-xs font-bold text-white">{formatMoney(sub.amount)}</p>
-                        <button
-                          onClick={() => onDelete(sub.id)}
-                          aria-label={`Delete ${sub.name}`}
-                          className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-white/5 transition-colors"
-                        >
-                          <Trash2 size={13} />
-                        </button>
+                        {isAuto ? (
+                          <button
+                            onClick={() => handlePromoteSubscription(sub)}
+                            disabled={isPromoted}
+                            title="Lock into persistent monthly budget"
+                            className={`px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all ${
+                              isPromoted
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                : 'bg-violet-500/20 hover:bg-violet-500/30 text-violet-200 border border-violet-500/30 active:scale-95'
+                            }`}
+                          >
+                            {isPromoted ? (
+                              <>
+                                <CheckCircle2 size={11} /> Locked
+                              </>
+                            ) : (
+                              <>
+                                <Plus size={11} /> Lock
+                              </>
+                            )}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => onDelete(sub.id)}
+                            aria-label={`Delete ${sub.name}`}
+                            className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-white/5 transition-colors"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -996,78 +1043,6 @@ function SubscriptionsAndDebtTab({
               <Plus size={14} /> Add Recurring Subscription
             </button>
           </GlassCard>
-
-          {/* Auto-detected Subscriptions from Live Bank Activity */}
-          {autoDetectedSubscriptions.length > 0 && (
-            <div className="p-4 rounded-3xl bg-zinc-900/85 backdrop-blur-2xl border border-violet-500/25 shadow-xl space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 rounded-xl bg-violet-500/20 text-violet-400">
-                    <Sparkles size={16} />
-                  </div>
-                  <div>
-                    <h3 className="text-xs font-bold text-white">
-                      Auto-Detected Recurring Activity
-                    </h3>
-                    <p className="text-[10px] text-gray-400">
-                      Identified from your live bank & card statements
-                    </p>
-                  </div>
-                </div>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30">
-                  {autoDetectedSubscriptions.length} Found
-                </span>
-              </div>
-
-              <div className="space-y-2">
-                {autoDetectedSubscriptions.map((item) => {
-                  const isPromoted = promotedIds.has(item.id);
-                  const catStyle = getCategoryStyle(item.category);
-                  return (
-                    <div
-                      key={item.id}
-                      className="p-2.5 rounded-2xl bg-black/40 border border-white/5 flex items-center justify-between gap-2 text-xs"
-                    >
-                      <div className="min-w-0 flex items-center gap-2">
-                        <span
-                          className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 ${catStyle.bg} ${catStyle.text} ${catStyle.border}`}
-                        >
-                          {formatCategory(item.category || 'Recurring')}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="font-semibold text-white truncate">{item.name}</p>
-                          <p className="text-[10px] text-gray-500">{item.date || 'Recent'}</p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="font-bold text-white">{formatMoney(item.amount)}</span>
-                        <button
-                          onClick={() => handlePromoteSubscription(item)}
-                          disabled={isPromoted}
-                          className={`px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all ${
-                            isPromoted
-                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                              : 'bg-violet-500/20 hover:bg-violet-500/30 text-violet-200 border border-violet-500/30 active:scale-95'
-                          }`}
-                        >
-                          {isPromoted ? (
-                            <>
-                              <CheckCircle2 size={11} /> Tracked
-                            </>
-                          ) : (
-                            <>
-                              <Plus size={11} /> Track Monthly
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
         </div>
       )}
 
