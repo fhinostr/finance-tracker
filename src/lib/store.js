@@ -155,6 +155,39 @@ export function useFinanceData() {
     setData((d) => ({ ...d, entries: [{ id: uid(), date: toISODate(), ...entry }, ...d.entries] }));
   }, []);
 
+  const addEntries = useCallback((newItems) => {
+    if (!Array.isArray(newItems) || newItems.length === 0) return;
+    setData((d) => {
+      const existing = d.entries || [];
+      const toAdd = [];
+      for (const item of newItems) {
+        const isDuplicate = existing.some(
+          (e) =>
+            (item.id && e.id === item.id) ||
+            (e.name === item.name && Math.abs(e.amount - item.amount) < 0.01 && e.date === item.date),
+        );
+        if (
+          !isDuplicate &&
+          !toAdd.some((t) => t.name === item.name && Math.abs(t.amount - item.amount) < 0.01 && t.date === item.date)
+        ) {
+          toAdd.push({
+            id: item.id || uid(),
+            kind: item.kind || 'expense',
+            name: item.name,
+            amount: Number(item.amount) || 0,
+            category: item.category || 'Other',
+            frequency: item.frequency || 'one-time',
+            date: item.date || toISODate(),
+            pending: Boolean(item.pending),
+          });
+        }
+      }
+      if (toAdd.length === 0) return d;
+      const combined = [...toAdd, ...existing].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      return { ...d, entries: combined };
+    });
+  }, []);
+
   const removeEntry = useCallback((id) => {
     setData((d) => ({
       ...d,
@@ -176,6 +209,7 @@ export function useFinanceData() {
     entries: data.entries,
     budgets: data.budgets ?? {},
     addEntry,
+    addEntries,
     removeEntry,
     resetAllData,
   };

@@ -202,15 +202,44 @@ Deno.serve(async (req) => {
       }
 
       try {
-        const syncRes = await plaidClient.transactionsSync({ access_token });
-        const allTxs = [...(syncRes.data.added || []), ...(syncRes.data.modified || [])];
-        results.transactions = allTxs.map((tx: any) => ({
+        const today = new Date().toISOString().slice(0, 10);
+        const thirtyFiveDaysAgo = new Date(Date.now() - 35 * 86400000).toISOString().slice(0, 10);
+
+        let txList: any[] = [];
+        try {
+          const getRes = await plaidClient.transactionsGet({
+            access_token,
+            start_date: thirtyFiveDaysAgo,
+            end_date: today,
+            options: {
+              count: 100,
+              include_original_description: true,
+            },
+          });
+          if (Array.isArray(getRes.data?.transactions) && getRes.data.transactions.length > 0) {
+            txList = getRes.data.transactions;
+          }
+        } catch (getErr: any) {
+          console.warn('transactionsGet fallback:', getErr?.message);
+        }
+
+        // Also check transactionsSync if transactionsGet returned nothing
+        if (txList.length === 0) {
+          try {
+            const syncRes = await plaidClient.transactionsSync({ access_token });
+            txList = [...(syncRes.data.added || []), ...(syncRes.data.modified || [])];
+          } catch (syncErr: any) {
+            console.warn('transactionsSync error:', syncErr?.message);
+          }
+        }
+
+        results.transactions = txList.map((tx: any) => ({
           id: tx.transaction_id,
-          name: tx.name,
+          name: tx.merchant_name || tx.name,
           amount: Math.abs(tx.amount),
           kind: tx.amount < 0 ? 'income' : 'expense',
           category: tx.personal_finance_category?.primary || tx.category?.[0] || 'Other',
-          date: tx.date,
+          date: tx.authorized_date || tx.date,
           pending: Boolean(tx.pending),
         }));
       } catch (e: any) {

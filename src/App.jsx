@@ -48,24 +48,11 @@ export default function PersonalFinanceTracker() {
     return () => window.removeEventListener('finance-tracker:accounts-updated', handleUpdate);
   }, []);
 
-  const { entries, budgets, addEntry, removeEntry } = useFinanceData();
+  const { entries, budgets, addEntry, addEntries, removeEntry } = useFinanceData();
 
   const handleSyncTransactions = (newTxs) => {
-    if (!Array.isArray(newTxs)) return;
-    for (const tx of newTxs) {
-      // Avoid duplicate by name and date
-      const exists = entries.some((e) => e.name === tx.name && e.date === tx.date && e.amount === tx.amount);
-      if (!exists) {
-        addEntry({
-          kind: tx.kind || 'expense',
-          name: tx.name,
-          amount: tx.amount,
-          category: tx.category || 'Other',
-          frequency: 'one-time',
-          date: tx.date,
-        });
-      }
-    }
+    if (!Array.isArray(newTxs) || newTxs.length === 0) return;
+    addEntries(newTxs);
   };
 
   const handleUpdateInvestmentTotal = () => {
@@ -379,7 +366,8 @@ function DashboardTab({
   const allCategories = Object.keys(categoryTotals);
   const recentTransactions = entries
     .filter((e) => e.kind !== 'debt')
-    .slice(0, 6);
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+    .slice(0, 10);
 
   const {
     bankAccounts,
@@ -580,8 +568,13 @@ function DashboardTab({
                           : 'bg-blue-500/20 text-blue-300'
                       }`}
                     >
-                      {item.kind === 'payment' ? 'Debt Pay' : item.category || item.kind}
+                      {item.kind === 'payment' ? 'Debt Pay' : formatCategory(item.category || item.kind)}
                     </span>
+                    {item.pending && (
+                      <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        Pending
+                      </span>
+                    )}
                     <p className="text-sm font-medium text-gray-200 truncate">{item.name}</p>
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
