@@ -36,6 +36,42 @@ export function saveStoredAccounts(accounts) {
   }
 }
 
+export function categorizeAccounts(accounts = []) {
+  const isCredit = (a) =>
+    a.type === 'credit' ||
+    a.subtype?.toLowerCase().includes('credit') ||
+    a.name?.toLowerCase().includes('credit card') ||
+    a.name?.toLowerCase().includes('visa') ||
+    a.name?.toLowerCase().includes('mastercard') ||
+    a.name?.toLowerCase().includes('amex');
+
+  const isInvestment = (a) =>
+    a.type === 'investment' ||
+    a.subtype?.toLowerCase().includes('brokerage') ||
+    a.subtype?.toLowerCase().includes('investment') ||
+    a.name?.toLowerCase().includes('robinhood') ||
+    a.name?.toLowerCase().includes('vanguard') ||
+    a.name?.toLowerCase().includes('fidelity') ||
+    a.name?.toLowerCase().includes('schwab');
+
+  const creditAccounts = accounts.filter(isCredit);
+  const investmentAccounts = accounts.filter(isInvestment);
+  const bankAccounts = accounts.filter((a) => !isCredit(a) && !isInvestment(a));
+
+  const totalCashInBank = bankAccounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+  const totalCreditBalance = creditAccounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+  const totalPortfolioValue = investmentAccounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+
+  return {
+    bankAccounts,
+    creditAccounts,
+    investmentAccounts,
+    totalCashInBank,
+    totalCreditBalance,
+    totalPortfolioValue,
+  };
+}
+
 export const EXPENSE_CATEGORIES = [
   'Groceries',
   'Dining',

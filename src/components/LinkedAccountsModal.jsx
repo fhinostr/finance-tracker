@@ -38,6 +38,7 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
   const [plaidEnv, setPlaidEnv] = useState(initialPlaid.env || 'sandbox');
   const [showKeySettings, setShowKeySettings] = useState(!initialPlaid.clientId || !initialPlaid.secret);
   const [keysSaved, setKeysSaved] = useState(false);
+  const [isSyncingAll, setIsSyncingAll] = useState(false);
 
   // Initialize or Refresh Link Token
   const requestLinkToken = useCallback(async (accountType = 'bank') => {
@@ -48,6 +49,7 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
       if (data?.link_token) {
         setLinkToken(data.link_token);
         setShowKeySettings(false);
+        return data.link_token;
       }
     } catch (err) {
       setErrorMessage(
@@ -56,6 +58,7 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
     } finally {
       setLoading(false);
     }
+    return null;
   }, []);
 
   useEffect(() => {
@@ -101,87 +104,8 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
     requestLinkToken();
   };
 
-  // Exchange Plaid Public Token
-  const onSuccess = useCallback(
-    async (public_token, metadata) => {
-      setLoading(true);
-      setErrorMessage('');
-      try {
-        const data = await callPlaidApi('exchange-token', {
-          public_token,
-          institution: metadata?.institution,
-          accounts: metadata?.accounts,
-        });
-
-        const institutionName = metadata?.institution?.name || 'Linked Financial Account';
-        const isRobinhood = institutionName.toLowerCase().includes('robinhood');
-
-        let newAccounts = [];
-        if (Array.isArray(data.accounts) && data.accounts.length > 0) {
-          newAccounts = data.accounts.map((acc, idx) => {
-            const rawType = (acc.type || '').toLowerCase();
-            const type = isRobinhood || rawType === 'investment' ? 'investment' : rawType === 'credit' ? 'credit' : 'bank';
-            return {
-              id: acc.id || `${data.item_id || 'acc'}-${idx}`,
-              name: `${institutionName}${acc.name ? ` (${acc.name})` : ''}`.trim(),
-              type,
-              subtype: acc.subtype,
-              balance: Number(acc.balance) || 0,
-              available: acc.available,
-              mask: acc.mask || '••••',
-              accessToken: data.access_token || 'token_' + Date.now(),
-              lastSynced: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            };
-          });
-        } else {
-          newAccounts = [
-            {
-              id: data.item_id || 'acc-' + Date.now(),
-              name: institutionName,
-              type: isRobinhood ? 'investment' : 'bank',
-              balance: 0,
-              mask: '••••',
-              accessToken: data.access_token || 'token_' + Date.now(),
-              lastSynced: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            },
-          ];
-        }
-
-        const current = getStoredAccounts();
-        const filtered = current.filter(
-          (ex) => !newAccounts.some((n) => n.id === ex.id || (n.name === ex.name && n.mask === ex.mask)),
-        );
-        const next = [...filtered, ...newAccounts];
-        saveStoredAccounts(next);
-        setAccounts(next);
-        setStatusMessage(`Connected ${institutionName}!`);
-
-        if (newAccounts[0]) {
-          syncAccount(newAccounts[0]);
-        }
-      } catch (err) {
-        setErrorMessage(`Connection failed: ${err.message || 'Error connecting account'}`);
-      } finally {
-        setLoading(false);
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
-
-  const { open, ready } = usePlaidLink({
-    token: linkToken,
-    onSuccess,
-  });
-
-  const removeAccount = (id) => {
-    const current = getStoredAccounts();
-    const next = current.filter((a) => a.id !== id);
-    saveStoredAccounts(next);
-    setAccounts(next);
-  };
-
-  const syncAccount = async (acc) => {
+  // Sync a single linked account
+  const syncAccount = useCallback(async (acc) => {
     setSyncingId(acc.id);
     try {
       const data = await callPlaidApi('sync', {
@@ -197,25 +121,63 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
       }
 
       const current = getStoredAccounts();
-      const updated = current.map((a) => {
-        if (a.id === acc.id) {
-          let newBal = a.balance;
-          if (a.type === 'investment' && data.investments?.totalValue !== undefined) {
-            newBal = data.investments.totalValue;
-          } else if (Array.isArray(data.accounts)) {
-            const matched = data.accounts.find((da) => da.id === a.id || da.mask === a.mask);
-            if (matched && matched.balance !== undefined) {
-              newBal = matched.balance;
-            }
+      let updated = [...current];
+
+      if (Array.isArray(data.accounts) && data.accounts.length > 0) {
+        const institutionName = acc.name.split(' (')[0] || 'Bank';
+        const isRobinhood = acc.type === 'investment' || institutionName.toLowerCase().includes('robinhood');
+
+        // Remove old dummy placeholder that has mask '••••' for this access token
+        updated = updated.filter(
+          (ex) => !(ex.accessToken === acc.accessToken && ex.mask === '••••' && data.accounts.length > 0),
+        );
+
+        data.accounts.forEach((da) => {
+          const rawType = (da.type || '').toLowerCase();
+          const rawSub = (da.subtype || '').toLowerCase();
+          const isCredit = rawType === 'credit' || rawSub.includes('credit');
+          const isInv = isRobinhood || rawType === 'investment' || rawSub.includes('brokerage');
+          const resolvedType = isInv ? 'investment' : isCredit ? 'credit' : 'bank';
+
+          let balance = Number(da.balance) || 0;
+          if (resolvedType === 'investment' && data.investments?.totalValue) {
+            balance = data.investments.totalValue;
           }
-          return {
-            ...a,
-            balance: Number(newBal) || 0,
+
+          const existingIdx = updated.findIndex(
+            (ex) => ex.id === da.id || (ex.accessToken === acc.accessToken && ex.mask === da.mask),
+          );
+
+          const payload = {
+            id: da.id,
+            name: `${institutionName}${da.name ? ` (${da.name})` : ''}`.trim(),
+            type: resolvedType,
+            subtype: da.subtype,
+            balance,
+            available: da.available,
+            mask: da.mask || '••••',
+            accessToken: acc.accessToken,
             lastSynced: 'Just now',
           };
-        }
-        return a;
-      });
+
+          if (existingIdx >= 0) {
+            updated[existingIdx] = { ...updated[existingIdx], ...payload };
+          } else {
+            updated.push(payload);
+          }
+        });
+      } else {
+        updated = updated.map((a) => {
+          if (a.id === acc.id) {
+            let bal = a.balance;
+            if (a.type === 'investment' && data.investments?.totalValue !== undefined) {
+              bal = data.investments.totalValue;
+            }
+            return { ...a, balance: Number(bal) || 0, lastSynced: 'Just now' };
+          }
+          return a;
+        });
+      }
 
       saveStoredAccounts(updated);
       setAccounts(updated);
@@ -225,6 +187,158 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
     } finally {
       setSyncingId(null);
     }
+  }, [onSyncTransactions, onUpdateInvestmentTotal]);
+
+  // Sync all accounts
+  const syncAllAccounts = useCallback(async () => {
+    const current = getStoredAccounts();
+    if (current.length === 0) return;
+    setIsSyncingAll(true);
+    setStatusMessage('Syncing latest balances and activity...');
+    try {
+      const seenTokens = new Set();
+      for (const acc of current) {
+        if (!seenTokens.has(acc.accessToken)) {
+          seenTokens.add(acc.accessToken);
+          await syncAccount(acc);
+        }
+      }
+      setStatusMessage('All accounts successfully synced!');
+    } catch (e) {
+      console.warn('Sync all error:', e);
+    } finally {
+      setIsSyncingAll(false);
+    }
+  }, [syncAccount]);
+
+  // Auto-sync if any account has 0 balance or hasn't synced
+  useEffect(() => {
+    const current = getStoredAccounts();
+    const needsSync = current.some((a) => (Number(a.balance) === 0 || !a.lastSynced) && a.accessToken);
+    if (needsSync && current.length > 0) {
+      const timer = setTimeout(() => {
+        syncAllAccounts();
+      }, 400);
+      return () => clearTimeout(timer);
+    }
+  }, [syncAllAccounts]);
+
+  // Exchange Plaid Public Token
+  const onSuccess = useCallback(
+    async (public_token, metadata, explicitType = 'bank') => {
+      setLoading(true);
+      setErrorMessage('');
+      try {
+        const data = await callPlaidApi('exchange-token', {
+          public_token,
+          institution: metadata?.institution,
+          accounts: metadata?.accounts,
+        });
+
+        const institutionName = metadata?.institution?.name || (explicitType === 'investment' ? 'Robinhood' : 'Linked Account');
+        const isRobinhood = explicitType === 'investment' || institutionName.toLowerCase().includes('robinhood');
+
+        let newAccounts = [];
+        if (Array.isArray(data.accounts) && data.accounts.length > 0) {
+          newAccounts = data.accounts.map((acc, idx) => {
+            const rawType = (acc.type || '').toLowerCase();
+            const rawSub = (acc.subtype || '').toLowerCase();
+            const isCredit = rawType === 'credit' || rawSub.includes('credit');
+            const isInv = isRobinhood || rawType === 'investment' || rawSub.includes('brokerage');
+            const type = isInv ? 'investment' : isCredit ? 'credit' : 'bank';
+            return {
+              id: acc.id || `${data.item_id || 'acc'}-${idx}`,
+              name: `${institutionName}${acc.name ? ` (${acc.name})` : ''}`.trim(),
+              type,
+              subtype: acc.subtype,
+              balance: Number(acc.balance) || 0,
+              available: acc.available,
+              mask: acc.mask || '••••',
+              accessToken: data.access_token || 'token_' + Date.now(),
+              lastSynced: 'Just now',
+            };
+          });
+        } else {
+          newAccounts = [
+            {
+              id: data.item_id || 'acc-' + Date.now(),
+              name: institutionName,
+              type: isRobinhood ? 'investment' : 'bank',
+              balance: 0,
+              mask: '••••',
+              accessToken: data.access_token || 'token_' + Date.now(),
+              lastSynced: 'Just now',
+            },
+          ];
+        }
+
+        const current = getStoredAccounts();
+        const filtered = current.filter(
+          (ex) => !newAccounts.some((n) => n.id === ex.id || (n.name === ex.name && n.mask === ex.mask)),
+        );
+        const next = [...filtered, ...newAccounts];
+        saveStoredAccounts(next);
+        setAccounts(next);
+        setStatusMessage(`Connected ${institutionName}!`);
+
+        if (newAccounts[0]) {
+          await syncAccount(newAccounts[0]);
+        }
+      } catch (err) {
+        setErrorMessage(`Connection failed: ${err.message || 'Error connecting account'}`);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [syncAccount],
+  );
+
+  const { open } = usePlaidLink({
+    token: linkToken,
+    onSuccess: (public_token, metadata) => onSuccess(public_token, metadata, 'bank'),
+  });
+
+  // Launch Plaid with specific account type (bank vs investment)
+  const launchPlaid = async (type = 'bank') => {
+    setLoading(true);
+    setErrorMessage('');
+    setStatusMessage(type === 'investment' ? 'Opening Robinhood connection...' : 'Opening bank connection...');
+    try {
+      const data = await callPlaidApi('create-link-token', { account_type: type });
+      if (!data?.link_token) {
+        throw new Error('Could not generate link token.');
+      }
+      setLinkToken(data.link_token);
+
+      if (typeof window !== 'undefined' && window.Plaid) {
+        const handler = window.Plaid.create({
+          token: data.link_token,
+          onSuccess: (public_token, metadata) => {
+            onSuccess(public_token, metadata, type);
+          },
+          onExit: (err) => {
+            setLoading(false);
+            if (err) console.warn('Plaid Link exit:', err);
+          },
+        });
+        handler.open();
+      } else {
+        setTimeout(() => open(), 300);
+      }
+    } catch (err) {
+      setErrorMessage(
+        `${err.message || 'Unable to connect to Plaid'}. Check your Plaid keys and Environment setting.`,
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const removeAccount = (id) => {
+    const current = getStoredAccounts();
+    const next = current.filter((a) => a.id !== id);
+    saveStoredAccounts(next);
+    setAccounts(next);
   };
 
   return (
@@ -282,7 +396,21 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
 
         {/* Connected Accounts List */}
         <div className="mt-5 space-y-3">
-          <h3 className="text-xs uppercase tracking-wider font-semibold text-gray-400">Connected Accounts</h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs uppercase tracking-wider font-semibold text-gray-400">
+              Connected Accounts {accounts.length > 0 ? `(${accounts.length})` : ''}
+            </h3>
+            {accounts.length > 0 && (
+              <button
+                onClick={syncAllAccounts}
+                disabled={isSyncingAll}
+                className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 font-medium px-2.5 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 active:scale-95 transition-all"
+              >
+                <RefreshCw size={13} className={isSyncingAll ? 'animate-spin' : ''} />
+                <span>{isSyncingAll ? 'Syncing...' : 'Sync All'}</span>
+              </button>
+            )}
+          </div>
           {accounts.length === 0 ? (
             <div className="p-5 rounded-2xl bg-white/5 border border-dashed border-white/10 text-center">
               <p className="text-sm text-gray-400">No accounts linked yet.</p>
@@ -357,13 +485,11 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
             </span>
           </div>
 
-          {/* Plaid Link Official Button */}
-          {linkToken && ready ? (
+          {/* Plaid Link Connect Buttons */}
+          {plaidClientId?.trim() && plaidSecret?.trim() ? (
             <div className="space-y-2.5">
               <button
-                onClick={() => {
-                  requestLinkToken('bank').then(() => open());
-                }}
+                onClick={() => launchPlaid('bank')}
                 disabled={loading}
                 className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-400 hover:to-indigo-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25 active:scale-[0.98] transition-transform"
               >
@@ -371,9 +497,7 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
               </button>
 
               <button
-                onClick={() => {
-                  requestLinkToken('investment').then(() => open());
-                }}
+                onClick={() => launchPlaid('investment')}
                 disabled={loading}
                 className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 active:scale-[0.98] transition-transform"
               >

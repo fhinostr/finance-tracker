@@ -93,16 +93,22 @@ Deno.serve(async (req) => {
           success: true,
           access_token: itemAccessToken,
           item_id: itemId,
-          accounts: accountsResponse.data.accounts.map((acc: any) => ({
-            id: acc.account_id,
-            name: acc.name,
-            officialName: acc.official_name,
-            type: acc.type,
-            subtype: acc.subtype,
-            balance: acc.balances.current,
-            available: acc.balances.available,
-            mask: acc.mask,
-          })),
+          accounts: accountsResponse.data.accounts.map((acc: any) => {
+            let balance = acc.balances.current;
+            if (acc.type === 'depository' && (balance === null || balance === undefined)) {
+              balance = acc.balances.available;
+            }
+            return {
+              id: acc.account_id,
+              name: acc.name,
+              officialName: acc.official_name,
+              type: acc.type,
+              subtype: acc.subtype,
+              balance: balance != null ? balance : 0,
+              available: acc.balances.available,
+              mask: acc.mask,
+            };
+          }),
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
@@ -120,41 +126,65 @@ Deno.serve(async (req) => {
       const results: Record<string, unknown> = {};
 
       if (account_type === 'investment') {
+        let totalValue = 0;
+        let holdingsList: any[] = [];
         try {
           const invRes = await plaidClient.investmentsHoldingsGet({ access_token });
-          const totalValue = invRes.data.holdings.reduce(
-            (sum: number, h: any) => sum + (h.institution_value || 0),
+          holdingsList = (invRes.data.holdings || []).map((h: any) => {
+            const sec = invRes.data.securities?.find((s: any) => s.security_id === h.security_id);
+            return {
+              symbol: sec?.ticker_symbol || 'N/A',
+              name: sec?.name || 'Holding',
+              quantity: h.quantity,
+              value: h.institution_value,
+            };
+          });
+          totalValue = holdingsList.reduce(
+            (sum: number, h: any) => sum + (Number(h.value) || 0),
             0,
           );
-          results.investments = {
-            totalValue,
-            holdings: invRes.data.holdings.map((h: any) => {
-              const sec = invRes.data.securities.find((s: any) => s.security_id === h.security_id);
-              return {
-                symbol: sec?.ticker_symbol || 'N/A',
-                name: sec?.name || 'Holding',
-                quantity: h.quantity,
-                value: h.institution_value,
-              };
-            }),
-          };
         } catch (e: any) {
           console.warn('Investments holdings error:', e?.message);
         }
+
+        results.investments = {
+          totalValue,
+          holdings: holdingsList,
+        };
       }
 
-      // Always fetch fresh account balances (checking, savings, credit cards)
+      // Always fetch fresh account balances (checking, savings, credit cards, investments)
       try {
         const accRes = await plaidClient.accountsGet({ access_token });
-        results.accounts = accRes.data.accounts.map((acc: any) => ({
-          id: acc.account_id,
-          name: acc.name,
-          type: acc.type,
-          subtype: acc.subtype,
-          balance: acc.balances.current,
-          available: acc.balances.available,
-          mask: acc.mask,
-        }));
+        results.accounts = accRes.data.accounts.map((acc: any) => {
+          let balance = acc.balances.current;
+          if (acc.type === 'depository' && (balance === null || balance === undefined)) {
+            balance = acc.balances.available;
+          }
+          return {
+            id: acc.account_id,
+            name: acc.name,
+            officialName: acc.official_name,
+            type: acc.type,
+            subtype: acc.subtype,
+            balance: balance != null ? balance : 0,
+            available: acc.balances.available,
+            mask: acc.mask,
+          };
+        });
+
+        // If Robinhood totalValue was 0 from holdings, check account balance
+        if (account_type === 'investment' && results.investments) {
+          const inv = results.investments as { totalValue: number; holdings: any[] };
+          if (inv.totalValue === 0) {
+            const invAcc = accRes.data.accounts.find(
+              (a: any) => a.type === 'investment' || a.subtype === 'brokerage',
+            );
+            if (invAcc && invAcc.balances?.current != null) {
+              inv.totalValue = Number(invAcc.balances.current) || 0;
+            }
+          }
+        }
       } catch (e: any) {
         console.warn('Accounts balance fetch error:', e?.message);
       }

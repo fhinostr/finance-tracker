@@ -22,6 +22,7 @@ import {
   formatMoney,
   currentMonthKey,
   getStoredAccounts,
+  categorizeAccounts,
 } from './lib/store.js';
 import AddEntrySheet from './components/AddEntrySheet.jsx';
 import LinkedAccountsModal from './components/LinkedAccountsModal.jsx';
@@ -380,22 +381,14 @@ function DashboardTab({
     .filter((e) => e.kind !== 'debt')
     .slice(0, 6);
 
-  const bankAccounts = linkedAccounts.filter(
-    (a) =>
-      a.type === 'bank' ||
-      a.type === 'depository' ||
-      (!a.type?.includes('investment') && !a.type?.includes('credit') && !a.name?.toLowerCase().includes('robinhood')),
-  );
-  const creditAccounts = linkedAccounts.filter(
-    (a) => a.type === 'credit' || a.name?.toLowerCase().includes('credit') || a.subtype?.toLowerCase().includes('credit'),
-  );
-  const investmentAccounts = linkedAccounts.filter(
-    (a) => a.type === 'investment' || a.name?.toLowerCase().includes('robinhood'),
-  );
-
-  const totalCashInBank = bankAccounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
-  const totalCreditBalance = creditAccounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
-  const totalPortfolioValue = investmentAccounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+  const {
+    bankAccounts,
+    creditAccounts,
+    investmentAccounts,
+    totalCashInBank,
+    totalCreditBalance,
+    totalPortfolioValue,
+  } = categorizeAccounts(linkedAccounts);
 
   return (
     <div className="space-y-5">
@@ -805,25 +798,15 @@ function DebtTab({ debts, entries, onDelete, onAdd }) {
 }
 
 function WealthTab({ debts, entries, linkedAccounts = [], onOpenLink }) {
-  const bankAccounts = linkedAccounts.filter(
-    (a) =>
-      a.type === 'bank' ||
-      a.type === 'depository' ||
-      (!a.type?.includes('investment') && !a.type?.includes('credit') && !a.name?.toLowerCase().includes('robinhood')),
-  );
-  const creditAccounts = linkedAccounts.filter(
-    (a) => a.type === 'credit' || a.name?.toLowerCase().includes('credit') || a.subtype?.toLowerCase().includes('credit'),
-  );
-  const investmentAccounts = linkedAccounts.filter(
-    (a) => a.type === 'investment' || a.name?.toLowerCase().includes('robinhood'),
-  );
+  const {
+    investmentAccounts,
+    totalCashInBank,
+    totalCreditBalance,
+    totalPortfolioValue,
+  } = categorizeAccounts(linkedAccounts);
 
-  const totalBankAssets = bankAccounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
-  const totalInvestmentAssets = investmentAccounts.reduce(
-    (sum, a) => sum + (Number(a.balance) || 0),
-    0,
-  );
-  const totalCreditBalance = creditAccounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+  const totalBankAssets = totalCashInBank;
+  const totalInvestmentAssets = totalPortfolioValue;
   const totalUserDebts = debts.reduce((sum, d) => sum + debtBalance(d, entries), 0);
   const totalDebts = totalCreditBalance + totalUserDebts;
   const netWorth = totalBankAssets + totalInvestmentAssets - totalDebts;
