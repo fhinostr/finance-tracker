@@ -195,6 +195,26 @@ export function useFinanceData() {
     }));
   }, []);
 
+  const updateBudget = useCallback((category, maxAmount) => {
+    setData((d) => ({
+      ...d,
+      budgets: {
+        ...(d.budgets || {}),
+        [category]: Number(maxAmount) || 0,
+      },
+    }));
+  }, []);
+
+  const setAllBudgets = useCallback((newBudgets) => {
+    setData((d) => ({
+      ...d,
+      budgets: {
+        ...(d.budgets || {}),
+        ...newBudgets,
+      },
+    }));
+  }, []);
+
   const resetAllData = useCallback(() => {
     setData({ entries: [], budgets: {} });
     try {
@@ -210,6 +230,8 @@ export function useFinanceData() {
     budgets: data.budgets ?? {},
     addEntry,
     addEntries,
+    updateBudget,
+    setAllBudgets,
     removeEntry,
     resetAllData,
   };

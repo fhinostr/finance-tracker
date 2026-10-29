@@ -14,6 +14,12 @@ import {
   Calendar,
   Layers,
   Building2,
+  Sparkles,
+  Lightbulb,
+  ArrowRight,
+  CheckCircle2,
+  Target,
+  TrendingDown,
 } from 'lucide-react';
 import {
   useFinanceData,
@@ -24,6 +30,7 @@ import {
   getStoredAccounts,
   categorizeAccounts,
 } from './lib/store.js';
+import { generateOptimizationInsights } from './lib/optimization.js';
 import AddEntrySheet from './components/AddEntrySheet.jsx';
 import LinkedAccountsModal from './components/LinkedAccountsModal.jsx';
 
@@ -48,7 +55,7 @@ export default function PersonalFinanceTracker() {
     return () => window.removeEventListener('finance-tracker:accounts-updated', handleUpdate);
   }, []);
 
-  const { entries, budgets, addEntry, addEntries, removeEntry } = useFinanceData();
+  const { entries, budgets, addEntry, addEntries, updateBudget, setAllBudgets, removeEntry } = useFinanceData();
 
   const handleSyncTransactions = (newTxs) => {
     if (!Array.isArray(newTxs) || newTxs.length === 0) return;
@@ -127,6 +134,18 @@ export default function PersonalFinanceTracker() {
     };
   }, [entries, includeBonus]);
 
+  const optimization = useMemo(() => {
+    return generateOptimizationInsights({
+      entries,
+      categoryTotals,
+      totalVariable,
+      totalFixed,
+      debts,
+      currentNet,
+      budgets,
+    });
+  }, [entries, categoryTotals, totalVariable, totalFixed, debts, currentNet, budgets]);
+
   const openAdd = (autoListen = false) => {
     setSheet({ isOpen: true, autoListen });
   };
@@ -203,7 +222,7 @@ export default function PersonalFinanceTracker() {
 
         {/* Tab Navigation (iOS Segmented Control Style) */}
         <div className="flex bg-white/10 backdrop-blur-xl p-1 rounded-2xl border border-white/10 shadow-inner overflow-x-auto no-scrollbar">
-          {['dashboard', 'subscriptions', 'debt', 'wealth'].map((tab) => (
+          {['dashboard', 'optimize', 'subscriptions', 'debt', 'wealth'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -217,7 +236,7 @@ export default function PersonalFinanceTracker() {
                 />
               )}
               <span className={`relative z-20 ${activeTab === tab ? 'text-white' : 'text-gray-400'}`}>
-                {tab === 'wealth' ? 'Invest & Save' : tab}
+                {tab === 'optimize' ? 'Optimize' : tab === 'wealth' ? 'Invest & Save' : tab}
               </span>
             </button>
           ))}
@@ -243,12 +262,25 @@ export default function PersonalFinanceTracker() {
                 savingsSplit={savingsSplit}
                 entries={entries}
                 linkedAccounts={linkedAccounts}
+                optimization={optimization}
+                onNavigateTab={setActiveTab}
                 onOpenLink={() => {
                   setLinkedAccounts(getStoredAccounts());
                   setShowLinkedModal(true);
                 }}
                 onDelete={removeEntry}
                 onAdd={() => openAdd(false)}
+              />
+            )}
+            {activeTab === 'optimize' && (
+              <OptimizationTab
+                optimization={optimization}
+                budgets={budgets}
+                onUpdateBudget={updateBudget}
+                onSetAllBudgets={setAllBudgets}
+                categoryTotals={categoryTotals}
+                totalVariable={totalVariable}
+                onNavigateTab={setActiveTab}
               />
             )}
             {activeTab === 'subscriptions' && (
@@ -359,6 +391,8 @@ function DashboardTab({
   savingsSplit,
   entries,
   linkedAccounts = [],
+  optimization,
+  onNavigateTab,
   onOpenLink,
   onDelete,
   onAdd,
@@ -487,6 +521,41 @@ function DashboardTab({
             Manage & Sync Accounts
           </button>
         </GlassCard>
+      )}
+
+      {/* Smart Budget Optimization Callout */}
+      {optimization?.totalPotentialSavings > 0 && (
+        <div className="relative overflow-hidden p-4 rounded-3xl bg-gradient-to-br from-indigo-900/50 via-purple-900/35 to-zinc-900/80 backdrop-blur-xl border border-indigo-500/25 shadow-xl space-y-3">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                <Sparkles size={18} />
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold tracking-wider text-indigo-300">
+                  Optimization Insights
+                </span>
+                <p className="text-sm font-bold text-white">
+                  Save up to {formatMoney(optimization.totalPotentialSavings)}/mo
+                </p>
+              </div>
+            </div>
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+              Score: {optimization.healthScore}/100
+            </span>
+          </div>
+
+          <p className="text-xs text-gray-300 leading-relaxed">
+            Identified <strong className="text-white font-semibold">{optimization.suggestions.length} spending cut opportunities</strong> (saving roughly <span className="text-emerald-400 font-semibold">{formatMoney(optimization.totalPotentialSavings * 12)}/yr</span>).
+          </p>
+
+          <button
+            onClick={() => onNavigateTab?.('optimize')}
+            className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all"
+          >
+            <Lightbulb size={14} /> Review Spending Cuts & Budget Caps <ArrowRight size={13} />
+          </button>
+        </div>
       )}
 
       {/* Variable Expenses */}
@@ -980,6 +1049,309 @@ function WealthTab({ debts, entries, linkedAccounts = [], onOpenLink }) {
   );
 }
 
+function OptimizationTab({
+  optimization,
+  budgets,
+  onUpdateBudget,
+  onSetAllBudgets,
+  onNavigateTab,
+}) {
+  const [appliedAll, setAppliedAll] = useState(false);
+  const [appliedCategory, setAppliedCategory] = useState({});
+
+  const handleApplyAll = () => {
+    onSetAllBudgets(optimization.recommendedBudgets);
+    setAppliedAll(true);
+    setTimeout(() => setAppliedAll(false), 3000);
+  };
+
+  const handleApplySingle = (cat, target) => {
+    onUpdateBudget(cat, target);
+    setAppliedCategory((prev) => ({ ...prev, [cat]: true }));
+    setTimeout(() => {
+      setAppliedCategory((prev) => ({ ...prev, [cat]: false }));
+    }, 2500);
+  };
+
+  const monthlySavings = optimization?.totalPotentialSavings || 0;
+  const tenYearCompound = Math.round(
+    monthlySavings * ((Math.pow(1 + 0.07 / 12, 120) - 1) / (0.07 / 12)),
+  );
+
+  return (
+    <div className="space-y-5">
+      {/* 1. Hero Savings Card */}
+      <div className="relative overflow-hidden p-5 rounded-3xl bg-gradient-to-br from-indigo-900/50 via-purple-900/35 to-zinc-900/90 backdrop-blur-2xl border border-indigo-500/25 shadow-2xl space-y-4">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2.5 rounded-2xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+              <Sparkles size={22} />
+            </div>
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-300">
+                Budget Optimization
+              </p>
+              <h2 className="text-2xl font-extrabold text-white">
+                +{formatMoney(monthlySavings)}
+                <span className="text-xs text-gray-400 font-normal"> / month</span>
+              </h2>
+            </div>
+          </div>
+          <div className="text-right">
+            <span className="text-[10px] uppercase font-bold text-gray-400 block mb-0.5">Budget Health</span>
+            <span
+              className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
+                optimization.healthScore >= 80
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                  : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+              }`}
+            >
+              {optimization.healthScore}/100
+            </span>
+          </div>
+        </div>
+
+        <p className="text-xs text-gray-300 leading-relaxed">
+          Identified{' '}
+          <strong className="text-white font-semibold">
+            {optimization.suggestions.length} high-leverage opportunities
+          </strong>{' '}
+          to eliminate unnecessary fees, right-size discretionary categories, and boost your monthly surplus.
+        </p>
+
+        <div className="grid grid-cols-2 gap-2 pt-1">
+          <div className="p-3 bg-black/40 rounded-2xl border border-white/5">
+            <p className="text-[10px] uppercase text-gray-500 font-semibold mb-0.5">Annual Potential</p>
+            <p className="text-sm font-bold text-emerald-400">
+              +{formatMoney(monthlySavings * 12)} / yr
+            </p>
+          </div>
+          <div className="p-3 bg-black/40 rounded-2xl border border-white/5">
+            <p className="text-[10px] uppercase text-gray-500 font-semibold mb-0.5">10-Yr Wealth Addition</p>
+            <p className="text-sm font-bold text-indigo-300">
+              +{formatMoney(tenYearCompound)}
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={handleApplyAll}
+          className="w-full py-3 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/25 active:scale-95 transition-all"
+        >
+          {appliedAll ? (
+            <>
+              <CheckCircle2 size={16} className="text-emerald-300" />
+              <span>Applied All Recommended Caps!</span>
+            </>
+          ) : (
+            <>
+              <Target size={16} />
+              <span>Apply All Recommended Budget Caps</span>
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* 2. 50 / 30 / 20 Diagnostic Meter */}
+      <GlassCard
+        title="50 / 30 / 20 Rule Diagnostic"
+        icon={<PieChart className="text-purple-400" />}
+        amount={`${optimization.budgetRatio.wants.pct}% Wants`}
+      >
+        <p className="text-xs text-gray-400 mb-3">
+          Comparing your current spending allocation against gold-standard financial targets.
+        </p>
+
+        <div className="space-y-3">
+          {/* Needs */}
+          <div>
+            <div className="flex justify-between text-xs font-medium mb-1">
+              <span className="text-gray-300">Needs (Fixed Bills & Debts)</span>
+              <span className="text-gray-400">
+                {optimization.budgetRatio.needs.pct}% <span className="text-gray-500">(Target: ≤50%)</span>
+              </span>
+            </div>
+            <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+              <div
+                className={`h-full ${optimization.budgetRatio.needs.pct > 55 ? 'bg-amber-400' : 'bg-blue-400'}`}
+                style={{ width: `${Math.min(optimization.budgetRatio.needs.pct, 100)}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Wants */}
+          <div>
+            <div className="flex justify-between text-xs font-medium mb-1">
+              <span className="text-gray-300">Wants (Discretionary Variable)</span>
+              <span className="text-gray-400">
+                {optimization.budgetRatio.wants.pct}% <span className="text-gray-500">(Target: ≤30%)</span>
+              </span>
+            </div>
+            <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+              <div
+                className={`h-full ${optimization.budgetRatio.wants.pct > 35 ? 'bg-red-400' : 'bg-purple-400'}`}
+                style={{ width: `${Math.min(optimization.budgetRatio.wants.pct, 100)}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Savings */}
+          <div>
+            <div className="flex justify-between text-xs font-medium mb-1">
+              <span className="text-gray-300">Savings & Surplus</span>
+              <span className="text-gray-400">
+                {optimization.budgetRatio.savings.pct}% <span className="text-gray-500">(Target: ≥20%)</span>
+              </span>
+            </div>
+            <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+              <div
+                className="h-full bg-emerald-400"
+                style={{ width: `${Math.min(optimization.budgetRatio.savings.pct, 100)}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      </GlassCard>
+
+      {/* 3. Personalized Spending Cut Candidates */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between px-1">
+          <h3 className="text-xs uppercase tracking-wider font-semibold text-gray-400">
+            Recommended Spending Cuts ({optimization.suggestions.length})
+          </h3>
+          <span className="text-[10px] text-indigo-400 font-semibold">Priority Ranked</span>
+        </div>
+
+        {optimization.suggestions.length === 0 ? (
+          <GlassCard title="Everything Optimized" icon={<CheckCircle2 className="text-emerald-400" />}>
+            <p className="text-xs text-gray-400 py-3 text-center">
+              Your spending is lean and fully aligned with your budget targets!
+            </p>
+          </GlassCard>
+        ) : (
+          optimization.suggestions.map((sug) => {
+            const isApplied = budgets[sug.category] === sug.targetSpend || appliedCategory[sug.category];
+            return (
+              <div
+                key={sug.id}
+                className="p-4 rounded-3xl bg-zinc-900/80 backdrop-blur-xl border border-white/10 shadow-lg space-y-3 hover:border-white/15 transition-all"
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <span
+                      className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                        sug.impact === 'quick-win'
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          : sug.impact === 'high'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                          : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                      }`}
+                    >
+                      {sug.badge}
+                    </span>
+                    <h4 className="text-sm font-bold text-white mt-1.5">{sug.title}</h4>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-sm font-bold text-emerald-400">
+                      +{formatMoney(sug.monthlySavings)}/mo
+                    </span>
+                    <p className="text-[10px] text-gray-500">+{formatMoney(sug.annualSavings)}/yr</p>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-black/40 rounded-2xl border border-white/5 flex items-center justify-between text-xs">
+                  <div>
+                    <span className="text-gray-500 block text-[10px]">Current Spend</span>
+                    <span className="font-semibold text-gray-300">{formatMoney(sug.currentSpend)}</span>
+                  </div>
+                  <TrendingDown size={14} className="text-emerald-400" />
+                  <div>
+                    <span className="text-gray-500 block text-[10px]">Target Cap</span>
+                    <span className="font-bold text-white">{formatMoney(sug.targetSpend)}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-gray-500 block text-[10px]">Monthly Cut</span>
+                    <span className="font-bold text-emerald-400">-{formatMoney(sug.monthlySavings)}</span>
+                  </div>
+                </div>
+
+                <p className="text-xs text-gray-400 leading-relaxed">{sug.advice}</p>
+
+                <div className="pt-1 flex gap-2">
+                  <button
+                    onClick={() => handleApplySingle(sug.category, sug.targetSpend)}
+                    className={`flex-1 py-2 px-3 rounded-xl font-semibold text-xs flex items-center justify-center gap-1.5 transition-all ${
+                      isApplied
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 cursor-default'
+                        : 'bg-white/10 hover:bg-white/20 text-white active:scale-95'
+                    }`}
+                  >
+                    {isApplied ? (
+                      <>
+                        <CheckCircle2 size={13} /> Target Cap Applied
+                      </>
+                    ) : (
+                      <>
+                        <Target size={13} /> {sug.actionLabel}
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* 4. Goal Accelerator Impact Card */}
+      {optimization.debtAccelerationMonths ? (
+        <GlassCard
+          title="Debt Payoff Accelerator"
+          icon={<Car className="text-red-400" />}
+          amount={`-${optimization.debtAccelerationMonths} Months`}
+        >
+          <p className="text-xs text-gray-300 leading-relaxed">
+            By applying these spending cuts and directing your{' '}
+            <strong className="text-emerald-400 font-semibold">
+              +{formatMoney(monthlySavings)}/mo
+            </strong>{' '}
+            surplus directly into debt payoff, you will be completely debt-free{' '}
+            <strong className="text-white font-bold">{optimization.debtAccelerationMonths} months earlier</strong>{' '}
+            and save hundreds in interest charges!
+          </p>
+          <button
+            onClick={() => onNavigateTab?.('debt')}
+            className="mt-3 w-full py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-semibold text-gray-200 flex items-center justify-center gap-1 transition-colors"
+          >
+            Review Debt Strategy <ArrowRight size={13} />
+          </button>
+        </GlassCard>
+      ) : (
+        <GlassCard
+          title="10-Year Wealth Multiplier"
+          icon={<TrendingUp className="text-emerald-400" />}
+          amount={formatMoney(tenYearCompound)}
+        >
+          <p className="text-xs text-gray-300 leading-relaxed">
+            If you channel your{' '}
+            <strong className="text-emerald-400 font-semibold">
+              +{formatMoney(monthlySavings)}/mo
+            </strong>{' '}
+            optimized savings into low-cost index funds at an average 7% annual return, it compounds into{' '}
+            <strong className="text-white font-bold">{formatMoney(tenYearCompound)}</strong> in 10 years!
+          </p>
+          <button
+            onClick={() => onNavigateTab?.('wealth')}
+            className="mt-3 w-full py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-semibold text-gray-200 flex items-center justify-center gap-1 transition-colors"
+          >
+            View Invest & Save Waterfall <ArrowRight size={13} />
+          </button>
+        </GlassCard>
+      )}
+    </div>
+  );
+}
+
 // --- UI COMPONENTS ---
 
 function GlassCard({ title, amount, icon, children }) {
@@ -1003,13 +1375,17 @@ function GlassCard({ title, amount, icon, children }) {
 function ProgressBar({ label, current, max, color = 'bg-white' }) {
   const safeMax = max > 0 ? max : 1;
   const percentage = Math.min((current / safeMax) * 100, 100);
+  const isOver = current > max && max > 0;
+  const isNear = max > 0 && current / max >= 0.85;
+  const barColor = isOver ? 'bg-red-400' : isNear ? 'bg-amber-400' : color;
 
   return (
     <div className="space-y-2">
       <div className="flex justify-between text-xs font-medium">
         <span className="text-gray-400">{label}</span>
-        <span className="text-gray-200">
+        <span className={isOver ? 'text-red-400 font-semibold' : 'text-gray-200'}>
           ${Math.round(current).toLocaleString()} / ${Math.round(max).toLocaleString()}
+          {isOver && <span className="ml-1 text-[10px] text-red-400 font-bold">(Over Cap)</span>}
         </span>
       </div>
       <div className="h-2.5 bg-black/40 rounded-full overflow-hidden border border-white/5">
@@ -1017,7 +1393,7 @@ function ProgressBar({ label, current, max, color = 'bg-white' }) {
           initial={{ width: 0 }}
           animate={{ width: `${percentage}%` }}
           transition={{ duration: 1.2, delay: 0.1, type: 'spring', bounce: 0.4 }}
-          className={`h-full rounded-full ${color}`}
+          className={`h-full rounded-full ${barColor}`}
         />
       </div>
     </div>
