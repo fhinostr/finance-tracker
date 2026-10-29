@@ -24,6 +24,9 @@ import {
   Unlock,
   Info,
   ShieldCheck,
+  Scissors,
+  ShieldAlert,
+  ArrowUpRight,
 } from 'lucide-react';
 import {
   useFinanceData,
@@ -320,6 +323,7 @@ export default function PersonalFinanceTracker() {
                 currentNet={currentNet}
                 totalFixed={totalFixed}
                 totalVariable={totalVariable}
+                optimization={optimization}
                 onOpenLink={() => {
                   setLinkedAccounts(getStoredAccounts());
                   setShowLinkedModal(true);
@@ -884,6 +888,7 @@ function WealthTab({
   currentNet: _currentNet = 0,
   totalFixed = 0,
   totalVariable = 0,
+  optimization,
   onOpenLink,
   onNavigateTab,
 }) {
@@ -901,21 +906,12 @@ function WealthTab({
   const totalDebts = totalCreditBalance + totalUserDebts;
   const netWorth = totalBankAssets + totalInvestmentAssets - totalDebts;
 
-  // Timeline Phase: Current (Now - Dec 2026) vs Future (Jan 2027+ Rockville Move)
-  const isSystem2027 = new Date().getFullYear() >= 2027;
-  const [timelinePhase, setTimelinePhase] = useState(isSystem2027 ? 'future' : 'current');
   const [matchCaptured, setMatchCaptured] = useState(false);
 
-  // Dynamic Surplus Calculation based on Phase:
-  // Current Phase: Variable hourly client income based on live deposits minus expenses
-  // Future Phase: $90k salary baseline (~$5,475 net/mo base + $125/mo bonus potential) minus expenses
-  const estimated2027Net = 5475;
-  const activeMonthlySurplus =
-    timelinePhase === 'current'
-      ? Math.max(cashSurplus, 0)
-      : Math.max(estimated2027Net - totalFixed - totalVariable, 800);
+  // Dynamic Monthly Cash Surplus
+  const activeMonthlySurplus = Math.max(cashSurplus, 0);
 
-  // 1. Identify Live Savings / HYSA Balance
+  // 1. Live HYSA / Savings Balance
   const savingsAccounts = bankAccounts.filter(
     (a) =>
       a.subtype?.toLowerCase().includes('savings') ||
@@ -927,7 +923,7 @@ function WealthTab({
       ? savingsAccounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0)
       : totalBankAssets;
 
-  // 2. Identify 2018 Kia Sportage Auto Loan
+  // 2. 2018 Kia Sportage Auto Loan
   const kiaDebt =
     debts.find((d) => {
       const name = (d.name || '').toLowerCase();
@@ -944,22 +940,6 @@ function WealthTab({
   const kiaApr = kiaDebt?.apr || 12.5;
   const isKiaPaidOff = kiaDebt ? kiaBalance <= 0 : false;
   const hasKiaDebt = kiaDebt != null && kiaBalance > 0;
-
-  // Waterfall Phase Calculations & Locking Rules:
-  // Phase 1: Maryland Move-In Buffer ($3,000 Target)
-  const phase1Target = 3000;
-  const phase1Current = Math.min(liquidSavings, phase1Target);
-  const phase1Pct = Math.min((phase1Current / phase1Target) * 100, 100);
-  const isPhase1Complete = liquidSavings >= phase1Target;
-
-  // Phase 2: Employer 401(k) Match (Unlocks Jan 2027)
-  const isPhase2Unlocked = isPhase1Complete;
-  const isPhase2Active = isPhase2Unlocked && timelinePhase === 'future';
-  const isPhase2Complete = isPhase2Unlocked && matchCaptured;
-
-  // Phase 3: The 2018 Kia Sportage Payoff Strategy
-  const isPhase3Unlocked = isPhase1Complete;
-  const isPhase3Active = isPhase3Unlocked && hasKiaDebt;
   const phase3Progress =
     kiaOriginal > 0
       ? Math.min(Math.max(((kiaOriginal - kiaBalance) / kiaOriginal) * 100, 0), 100)
@@ -967,78 +947,41 @@ function WealthTab({
       ? 100
       : 0;
 
-  // Phase 4: Emergency Fund (3-Month Baseline Runway ~$10,000)
-  // Unlocks once auto loan balance drops to $0
-  const isPhase4Unlocked = isPhase1Complete && (isKiaPaidOff || !hasKiaDebt);
-  const emergencyTarget = 10000;
-  const emergencySavings = Math.max(0, Math.min(liquidSavings - phase1Target, emergencyTarget));
-  const emergencyPct = Math.min((emergencySavings / emergencyTarget) * 100, 100);
-  const isPhase4Complete = isPhase4Unlocked && emergencySavings >= emergencyTarget;
+  // HYSA Goal Milestones
+  const moveInBufferTarget = 3000;
+  const moveInCurrent = Math.min(liquidSavings, moveInBufferTarget);
+  const moveInPct = Math.min((moveInCurrent / moveInBufferTarget) * 100, 100);
+  const isMoveInComplete = liquidSavings >= moveInBufferTarget;
 
-  // Phase 5: Tax-Advantaged Growth (Roth IRA + 30% Marginal Tax Shield)
-  // Unlocks once emergency fund is 100% full
-  const isPhase5Unlocked = isPhase4Complete;
+  const emergencyTarget = 10000;
+  const emergencySavings = Math.max(0, Math.min(liquidSavings - moveInBufferTarget, emergencyTarget));
+  const emergencyPct = Math.min((emergencySavings / emergencyTarget) * 100, 100);
+  const isEmergencyComplete = emergencySavings >= emergencyTarget;
+
+  // Investment Targets
   const rothIraTarget = 7000;
   const rothCurrent = Math.min(totalInvestmentAssets, rothIraTarget);
   const rothPct = Math.min((rothCurrent / rothIraTarget) * 100, 100);
 
-  // Active Routing Destination Logic
-  let activeDestination = 'Phase 1: Maryland Move-In Buffer';
-  let routingAdvice = 'Route 100% of current variable hourly surplus here first.';
-  let activeBadgeColor = 'text-blue-400 bg-blue-500/10 border-blue-500/20';
-
-  if (isPhase1Complete) {
-    if (hasKiaDebt) {
-      activeDestination = 'Phase 3: 2018 Kia Sportage Payoff';
-      routingAdvice = 'Dedicated: $800/month from cash flow + bonuses.';
-      activeBadgeColor = 'text-amber-400 bg-amber-500/10 border-amber-500/20';
-    } else if (!isPhase4Complete) {
-      activeDestination = 'Phase 4: 3-Month Emergency Fund';
-      routingAdvice = 'Auto loan is $0! 100% of surplus redirects to HYSA runway.';
-      activeBadgeColor = 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20';
-    } else {
-      activeDestination = 'Phase 5: Tax-Advantaged Growth';
-      routingAdvice = 'Emergency runway full! Maxing Roth IRA & scaling 401(k) 30% tax shield.';
-      activeBadgeColor = 'text-purple-400 bg-purple-500/10 border-purple-500/20';
-    }
-  }
+  // Optimization impacts
+  const optSavings = optimization?.totalPotentialSavings || 0;
+  const carMonthsSaved = optimization?.goalImpacts?.car?.monthsSaved || 3;
+  const carInterestSaved = optimization?.goalImpacts?.car?.interestSaved || 450;
+  const hysaWeeksFaster = optimization?.goalImpacts?.hysa?.weeksFaster || 4;
+  const tenYearCompound = optimization?.goalImpacts?.funds?.tenYearTotal || 45000;
 
   return (
     <div className="space-y-5">
-      {/* Timeline Phase Switcher */}
-      <div className="flex bg-white/10 backdrop-blur-xl p-1 rounded-2xl border border-white/10 shadow-inner">
-        <button
-          onClick={() => setTimelinePhase('current')}
-          className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold transition-all ${
-            timelinePhase === 'current'
-              ? 'bg-blue-600 text-white shadow-md'
-              : 'text-gray-400 hover:text-white'
-          }`}
-        >
-          Current Phase (Now – Dec 2026)
-        </button>
-        <button
-          onClick={() => setTimelinePhase('future')}
-          className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold transition-all ${
-            timelinePhase === 'future'
-              ? 'bg-indigo-600 text-white shadow-md'
-              : 'text-gray-400 hover:text-white'
-          }`}
-        >
-          Rockville Move (Jan 2027+)
-        </button>
-      </div>
-
-      {/* Surplus Distributor Engine Card */}
-      <div className="relative overflow-hidden p-5 rounded-3xl bg-gradient-to-br from-indigo-950/60 via-zinc-900/80 to-black/90 backdrop-blur-2xl border border-indigo-500/25 shadow-2xl space-y-4">
+      {/* Strategic Goals Header & Surplus Engine */}
+      <div className="relative overflow-hidden p-5 rounded-3xl bg-gradient-to-br from-indigo-950/70 via-zinc-900/85 to-black/90 backdrop-blur-2xl border border-indigo-500/25 shadow-2xl space-y-4">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-2.5">
             <div className="p-2.5 rounded-2xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
-              <Sparkles size={20} />
+              <Target size={22} />
             </div>
             <div>
               <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-300">
-                Surplus Distributor Engine
+                Core Financial Goals Engine
               </p>
               <h2 className="text-2xl font-extrabold text-white">
                 {formatMoney(activeMonthlySurplus)}
@@ -1046,246 +989,139 @@ function WealthTab({
               </h2>
             </div>
           </div>
-          <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${activeBadgeColor}`}>
-            Active Routing
-          </span>
+          <button
+            onClick={onOpenLink}
+            className="text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 px-2.5 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/25 transition-all"
+          >
+            Manage Accounts
+          </button>
         </div>
 
-        {/* Timeline Context Note */}
-        <div className="p-3 bg-black/40 rounded-2xl border border-white/5 space-y-1">
-          <p className="text-xs font-semibold text-white flex items-center gap-1.5">
-            <Target size={13} className="text-indigo-400" />
-            <span>Currently Routing To: <strong>{activeDestination}</strong></span>
-          </p>
-          <p className="text-[11px] text-gray-400 leading-relaxed">
-            {timelinePhase === 'current'
-              ? 'Operating under Variable Hourly Client Income. Cash surplus is derived dynamically from live deposits minus expenses.'
-              : 'Operating under Rockville, MD Transition. Budgeted on $90,000 base salary (~$5,475/mo net) with up to $1,500 annual bonus.'}
-          </p>
-          <p className="text-[11px] text-emerald-400 font-medium pt-0.5">
-            {routingAdvice}
-          </p>
-        </div>
+        <p className="text-xs text-gray-300 leading-relaxed">
+          Your live cash flow surplus and identified spending optimizations are channeled directly into your 3 core financial priorities: paying off your car loan, securing your HYSA buffer, and growing tax-advantaged funds.
+        </p>
+
+        {/* Goal Impact Highway */}
+        {optSavings > 0 && (
+          <div className="p-3 bg-black/40 rounded-2xl border border-emerald-500/20 space-y-2">
+            <div className="flex items-center justify-between text-xs font-semibold">
+              <span className="text-emerald-400 flex items-center gap-1.5">
+                <Sparkles size={14} /> Optimization Opportunities Active
+              </span>
+              <span className="text-white font-bold">+{formatMoney(optSavings)} / mo</span>
+            </div>
+            <p className="text-[11px] text-gray-400 leading-relaxed">
+              Applying your identified spending cuts accelerates your car payoff by <strong>{carMonthsSaved} months</strong> and saves roughly <strong>{formatMoney(carInterestSaved)}</strong> in loan interest!
+            </p>
+            <button
+              onClick={() => onNavigateTab?.('optimize')}
+              className="w-full py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+            >
+              <Lightbulb size={13} /> View Specific Spending Cuts (Cut This Out & Spend Less Here) <ArrowRight size={13} />
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* The 5 Waterfall Priority Tiers */}
-      <div className="space-y-3.5">
-        <div className="flex items-center justify-between px-1">
-          <h3 className="text-xs uppercase tracking-wider font-semibold text-gray-400">
-            Surplus Priority Waterfall Tiers
-          </h3>
-          <span className="text-[10px] text-indigo-400 font-medium">Strict Sequential Locking</span>
-        </div>
-
-        {/* TIER 1: Maryland Move-In Buffer */}
-        <div
-          className={`p-5 rounded-3xl backdrop-blur-2xl border transition-all ${
-            isPhase1Complete
-              ? 'bg-emerald-950/20 border-emerald-500/25'
-              : 'bg-zinc-900/85 border-blue-500/30 shadow-lg shadow-blue-500/5'
-          }`}
-        >
+      {/* 3 Core Financial Goals */}
+      <div className="space-y-4">
+        {/* GOAL 2: Amount in HYSA (Move-In Buffer + Emergency Fund) */}
+        <div className="p-5 rounded-3xl bg-zinc-900/85 backdrop-blur-2xl border border-cyan-500/25 shadow-lg shadow-cyan-500/5 space-y-4">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
-              <div
-                className={`p-2.5 rounded-2xl ${
-                  isPhase1Complete
-                    ? 'bg-emerald-500/20 text-emerald-400'
-                    : 'bg-blue-500/20 text-blue-400'
-                }`}
-              >
-                {isPhase1Complete ? <CheckCircle2 size={22} /> : <Unlock size={22} />}
+              <div className="p-2.5 rounded-2xl bg-cyan-500/20 text-cyan-400">
+                <PiggyBank size={22} />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                    Phase 1 · Priority 1
+                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                    Liquid Savings Goal
                   </span>
-                  {isPhase1Complete && (
+                  {isMoveInComplete && (
                     <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400">
-                      100% Funded
+                      Buffer Funded
                     </span>
                   )}
                 </div>
-                <h4 className="text-base font-bold text-white mt-1">Maryland Move-In Buffer</h4>
+                <h4 className="text-base font-bold text-white mt-1">Amount in HYSA (High-Yield Savings)</h4>
                 <p className="text-xs text-gray-400">
-                  Apartment security deposits & MVA vehicle registration for Rockville, MD move.
+                  Targeting $3,000 move-in buffer first, then expanding to $10,000 (3-month emergency runway).
                 </p>
               </div>
             </div>
             <div className="text-right">
-              <span className="text-sm font-bold text-white">{formatMoney(phase1Current)}</span>
-              <p className="text-[10px] text-gray-500">Target: {formatMoney(phase1Target)}</p>
+              <span className="text-sm font-bold text-cyan-400">{formatMoney(liquidSavings)}</span>
+              <p className="text-[10px] text-gray-500">Live Liquid Cash</p>
             </div>
           </div>
 
-          <div className="mt-3.5 space-y-1.5">
-            <div className="w-full bg-black/40 rounded-full h-2.5 overflow-hidden border border-white/5">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${phase1Pct}%` }}
-                transition={{ duration: 1, ease: 'easeOut' }}
-                className={`h-full rounded-full ${isPhase1Complete ? 'bg-emerald-400' : 'bg-blue-500'}`}
+          {/* Milestone 1: $3k Move-In Buffer */}
+          <div className="p-3 bg-black/40 rounded-2xl border border-white/5 space-y-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-semibold text-white">Milestone 1: Maryland Move-In Buffer</span>
+              <span className="text-gray-300 font-bold">{formatMoney(moveInCurrent)} / {formatMoney(moveInBufferTarget)}</span>
+            </div>
+            <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+              <div
+                className={`h-full rounded-full ${isMoveInComplete ? 'bg-emerald-400' : 'bg-cyan-400'}`}
+                style={{ width: `${moveInPct}%` }}
               />
             </div>
-            <div className="flex justify-between text-[11px] text-gray-400">
-              <span>{phase1Pct.toFixed(0)}% Funded in Linked HYSA</span>
-              <span>
-                {isPhase1Complete
-                  ? 'Ready for Jan 2027 Move'
-                  : `${formatMoney(phase1Target - phase1Current)} remaining`}
-              </span>
-            </div>
+            <p className="text-[10px] text-gray-400">
+              Reserved for Rockville apartment security deposit and MVA vehicle registration.
+            </p>
           </div>
 
-          {!isPhase1Complete && (
-            <p className="mt-2.5 text-[11px] text-blue-300 bg-blue-500/10 p-2.5 rounded-xl border border-blue-500/20">
-              ⚡ <strong>Active Rule:</strong> Route 100% of current variable hourly client surplus here first. All downstream tiers remain locked until this buffer is full.
-            </p>
-          )}
-        </div>
-
-        {/* TIER 2: Employer 401(k) Match (Unlocks Jan 2027) */}
-        <div
-          className={`p-5 rounded-3xl backdrop-blur-2xl border transition-all ${
-            isPhase2Complete
-              ? 'bg-emerald-950/20 border-emerald-500/25'
-              : isPhase2Active
-              ? 'bg-zinc-900/85 border-indigo-500/30'
-              : 'bg-zinc-900/40 border-white/5 opacity-70'
-          }`}
-        >
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-3">
-              <div
-                className={`p-2.5 rounded-2xl ${
-                  isPhase2Complete
-                    ? 'bg-emerald-500/20 text-emerald-400'
-                    : isPhase2Active
-                    ? 'bg-indigo-500/20 text-indigo-400'
-                    : 'bg-white/5 text-gray-500'
-                }`}
-              >
-                {isPhase2Complete ? (
-                  <CheckCircle2 size={22} />
-                ) : isPhase2Active ? (
-                  <Unlock size={22} />
-                ) : (
-                  <Lock size={22} />
-                )}
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                    Phase 2 · Jan 2027
-                  </span>
-                  <span
-                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                      isPhase2Complete
-                        ? 'bg-emerald-500/20 text-emerald-400'
-                        : isPhase2Active
-                        ? 'bg-indigo-500/20 text-indigo-300'
-                        : 'bg-white/5 text-gray-400'
-                    }`}
-                  >
-                    {isPhase2Complete
-                      ? '100% Match Captured'
-                      : isPhase2Active
-                      ? 'Unlocks Jan 2027'
-                      : 'Locked'}
-                  </span>
-                </div>
-                <h4 className="text-base font-bold text-white mt-1">Employer 401(k) Match Flag</h4>
-                <p className="text-xs text-gray-400">
-                  Ensure 100% of employer match is captured upon $90k salary transition.
-                </p>
-              </div>
+          {/* Milestone 2: $10k Emergency Fund */}
+          <div className="p-3 bg-black/40 rounded-2xl border border-white/5 space-y-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-semibold text-white">Milestone 2: 3-Month Emergency Runway</span>
+              <span className="text-gray-300 font-bold">{formatMoney(emergencySavings)} / {formatMoney(emergencyTarget)}</span>
             </div>
+            <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+              <div
+                className={`h-full rounded-full ${isEmergencyComplete ? 'bg-emerald-400' : 'bg-blue-400'}`}
+                style={{ width: `${emergencyPct}%` }}
+              />
+            </div>
+            <p className="text-[10px] text-gray-400">
+              Full baseline financial shield once the car loan is cleared.
+            </p>
           </div>
-
-          <p className="mt-3 text-[11px] text-gray-400 leading-relaxed">
-            Employer match represents an <strong>immediate 100% guaranteed return</strong>. This tier enforces that match contributions are activated before cash flow is aggressively routed into debt payoff.
-          </p>
-
-          {isPhase2Unlocked && (
-            <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-300">
-                Status: {matchCaptured ? '100% Match Active' : 'Pending Salary Transition'}
-              </span>
-              <button
-                onClick={() => setMatchCaptured(!matchCaptured)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-                  matchCaptured
-                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                    : 'bg-white/10 hover:bg-white/20 text-white'
-                }`}
-              >
-                {matchCaptured ? '✓ Match Confirmed' : 'Mark 100% Match Captured'}
-              </button>
-            </div>
-          )}
-
-          {!isPhase2Unlocked && (
-            <p className="mt-2 text-[10px] text-gray-500 flex items-center gap-1">
-              <Lock size={12} /> Locked until Phase 1 Maryland Buffer reaches $3,000.
-            </p>
-          )}
         </div>
 
-        {/* TIER 3: The 2018 Kia Sportage Payoff Strategy (~12.5% APR) */}
-        <div
-          className={`p-5 rounded-3xl backdrop-blur-2xl border transition-all ${
-            isKiaPaidOff
-              ? 'bg-emerald-950/20 border-emerald-500/25'
-              : isPhase3Active
-              ? 'bg-zinc-900/85 border-amber-500/30 shadow-lg shadow-amber-500/5'
-              : 'bg-zinc-900/40 border-white/5 opacity-70'
-          }`}
-        >
+        {/* GOAL 1: 2018 Kia Sportage Payoff Strategy */}
+        <div className="p-5 rounded-3xl bg-zinc-900/85 backdrop-blur-2xl border border-amber-500/25 shadow-lg shadow-amber-500/5 space-y-4">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
-              <div
-                className={`p-2.5 rounded-2xl ${
-                  isKiaPaidOff
-                    ? 'bg-emerald-500/20 text-emerald-400'
-                    : isPhase3Active
-                    ? 'bg-amber-500/20 text-amber-400'
-                    : 'bg-white/5 text-gray-500'
-                }`}
-              >
-                {isKiaPaidOff ? (
-                  <CheckCircle2 size={22} />
-                ) : isPhase3Active ? (
-                  <Unlock size={22} />
-                ) : (
-                  <Lock size={22} />
-                )}
+              <div className="p-2.5 rounded-2xl bg-amber-500/20 text-amber-400">
+                <Car size={22} />
               </div>
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                    Phase 3 · Debt Acceleration
+                    High-Priority Debt Goal
                   </span>
-                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30">
-                    ~{kiaApr}% APR
+                  <span className="text-[10px] font-semibold text-gray-400">
+                    ~{kiaApr}% APR Auto Loan
                   </span>
                 </div>
-                <h4 className="text-base font-bold text-white mt-1">2018 Kia Sportage Payoff</h4>
+                <h4 className="text-base font-bold text-white mt-1">Pay Off 2018 Kia Sportage</h4>
                 <p className="text-xs text-gray-400">
-                  Target: Dedicated $800/mo cash flow + all lump-sum bonuses.
+                  Dedicating $800/mo cash flow + any detected bonuses directly to debt elimination.
                 </p>
               </div>
             </div>
             <div className="text-right">
-              <span className="text-sm font-bold text-white">
-                {isKiaPaidOff ? '$0 Balance' : formatMoney(kiaBalance)}
+              <span className={`text-sm font-bold ${isKiaPaidOff ? 'text-emerald-400' : 'text-amber-400'}`}>
+                {isKiaPaidOff ? '$0 (Paid Off!)' : formatMoney(kiaBalance)}
               </span>
-              <p className="text-[10px] text-gray-500">Live Auto Loan</p>
+              <p className="text-[10px] text-gray-500">Remaining Balance</p>
             </div>
           </div>
 
-          {/* Progress Bar */}
-          <div className="mt-3.5 space-y-1.5">
+          {/* Payoff Progress Bar */}
+          <div className="space-y-1.5">
             <div className="w-full bg-black/40 rounded-full h-2.5 overflow-hidden border border-white/5">
               <motion.div
                 initial={{ width: 0 }}
@@ -1295,192 +1131,105 @@ function WealthTab({
               />
             </div>
             <div className="flex justify-between text-[11px] text-gray-400">
-              <span>{phase3Progress.toFixed(0)}% Principal Paid Off</span>
+              <span>{phase3Progress.toFixed(0)}% Paid Off</span>
               <span>
                 {isKiaPaidOff
-                  ? 'Paid in Full ✓'
-                  : `${formatMoney(kiaBalance)} remaining`}
+                  ? 'Debt Eliminated!'
+                  : `${formatMoney(kiaBalance)} left to clear note`}
               </span>
             </div>
           </div>
 
-          {/* Mandatory Strategy Notes & Persistent Tooltip */}
-          <div className="mt-3 space-y-2">
-            {/* Tooltip: Principal-Only Payments */}
-            <div className="p-3 bg-amber-500/10 rounded-2xl border border-amber-500/20 flex items-start gap-2 text-xs text-amber-200">
-              <Info size={16} className="text-amber-400 shrink-0 mt-0.5" />
+          {/* Persistent Strategic Notes & Tooltips */}
+          <div className="space-y-2 pt-1">
+            <div className="p-3 rounded-2xl bg-black/50 border border-amber-500/20 flex items-start gap-2.5 text-xs text-amber-200">
+              <Info size={16} className="shrink-0 mt-0.5 text-amber-400" />
               <div>
-                <strong className="block font-semibold">Payment Instruction:</strong>
-                Always mark extra payments as <strong>&apos;Principal-Only&apos;</strong> with your auto lender. This bypasses future interest accrual and immediately crushes the 12.5% balance.
+                <strong className="text-white block mb-0.5">Payment Rule: Principal-Only Payments</strong>
+                When sending extra monthly cash beyond your minimum payment, always specify the payment as <strong>&quot;Principal-Only&quot;</strong>. This bypasses future interest compounding at ~12.5% APR.
               </div>
             </div>
 
-            {/* Strategic Note: Hold and pay off — do not lease */}
-            <div className="flex items-center justify-between p-2.5 bg-black/40 rounded-xl border border-white/5 text-xs text-gray-300">
-              <span className="flex items-center gap-1.5 font-medium text-emerald-400">
-                <ShieldCheck size={14} /> Strategic Rule:
-              </span>
-              <span className="font-bold text-white tracking-wide">
-                &ldquo;Hold and pay off — do not lease&rdquo;
-              </span>
+            <div className="p-3 rounded-2xl bg-black/30 border border-white/5 flex items-start gap-2.5 text-xs text-gray-300">
+              <ShieldCheck size={16} className="shrink-0 mt-0.5 text-emerald-400" />
+              <div>
+                <strong className="text-white block mb-0.5">Strategy: Hold and Pay Off — Do Not Lease</strong>
+                Keeping the 2018 Kia Sportage long-term post-payoff eliminates depreciation and permanently frees up <strong>$800+/month</strong> in recurring cash flow.
+              </div>
             </div>
           </div>
-
-          {!isPhase3Unlocked && (
-            <p className="mt-2 text-[10px] text-gray-500 flex items-center gap-1">
-              <Lock size={12} /> Locked until Phase 1 Maryland Buffer reaches $3,000.
-            </p>
-          )}
         </div>
 
-        {/* TIER 4: Emergency Fund ($10,000 Runway in HYSA) */}
-        <div
-          className={`p-5 rounded-3xl backdrop-blur-2xl border transition-all ${
-            isPhase4Complete
-              ? 'bg-emerald-950/20 border-emerald-500/25'
-              : isPhase4Unlocked
-              ? 'bg-zinc-900/85 border-blue-500/30'
-              : 'bg-zinc-900/40 border-white/5 opacity-70'
-          }`}
-        >
+        {/* GOAL 3: Tax-Advantaged Funds & Wealth Compounding */}
+        <div className="p-5 rounded-3xl bg-zinc-900/85 backdrop-blur-2xl border border-purple-500/25 shadow-lg shadow-purple-500/5 space-y-4">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
-              <div
-                className={`p-2.5 rounded-2xl ${
-                  isPhase4Complete
-                    ? 'bg-emerald-500/20 text-emerald-400'
-                    : isPhase4Unlocked
-                    ? 'bg-blue-500/20 text-blue-400'
-                    : 'bg-white/5 text-gray-500'
-                }`}
-              >
-                {isPhase4Complete ? (
-                  <CheckCircle2 size={22} />
-                ) : isPhase4Unlocked ? (
-                  <Unlock size={22} />
-                ) : (
-                  <Lock size={22} />
-                )}
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                    Phase 4 · Stability
-                  </span>
-                  {isPhase4Complete && (
-                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400">
-                      Fully Funded
-                    </span>
-                  )}
-                </div>
-                <h4 className="text-base font-bold text-white mt-1">3-Month Emergency Fund</h4>
-                <p className="text-xs text-gray-400">
-                  Target: ~$10,000 baseline liquid runway in linked HYSA.
-                </p>
-              </div>
-            </div>
-            <div className="text-right">
-              <span className="text-sm font-bold text-white">{formatMoney(emergencySavings)}</span>
-              <p className="text-[10px] text-gray-500">Target: {formatMoney(emergencyTarget)}</p>
-            </div>
-          </div>
-
-          <div className="mt-3.5 space-y-1.5">
-            <div className="w-full bg-black/40 rounded-full h-2.5 overflow-hidden border border-white/5">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${emergencyPct}%` }}
-                transition={{ duration: 1, ease: 'easeOut' }}
-                className={`h-full rounded-full ${isPhase4Complete ? 'bg-emerald-400' : 'bg-blue-400'}`}
-              />
-            </div>
-            <div className="flex justify-between text-[11px] text-gray-400">
-              <span>{emergencyPct.toFixed(0)}% Funded Runway</span>
-              <span>
-                {isPhase4Complete
-                  ? '3-Month Reserve Secure'
-                  : `${formatMoney(emergencyTarget - emergencySavings)} remaining`}
-              </span>
-            </div>
-          </div>
-
-          <p className="mt-2.5 text-[11px] text-gray-400 leading-relaxed">
-            {isPhase4Unlocked
-              ? '⚡ Auto loan balance is $0! 100% of your monthly cash flow surplus is now redirected here to establish your core emergency buffer.'
-              : '🔒 Locked: Will automatically unlock and redirect monthly surplus once the 2018 Kia Sportage loan reaches $0.'}
-          </p>
-        </div>
-
-        {/* TIER 5: Tax-Advantaged Growth (Roth IRA + 30% Marginal Tax Shield) */}
-        <div
-          className={`p-5 rounded-3xl backdrop-blur-2xl border transition-all ${
-            isPhase5Unlocked
-              ? 'bg-zinc-900/85 border-purple-500/30'
-              : 'bg-zinc-900/40 border-white/5 opacity-70'
-          }`}
-        >
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-3">
-              <div
-                className={`p-2.5 rounded-2xl ${
-                  isPhase5Unlocked
-                    ? 'bg-purple-500/20 text-purple-400'
-                    : 'bg-white/5 text-gray-500'
-                }`}
-              >
-                {isPhase5Unlocked ? <Unlock size={22} /> : <Lock size={22} />}
+              <div className="p-2.5 rounded-2xl bg-purple-500/20 text-purple-400">
+                <TrendingUp size={22} />
               </div>
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                    Phase 5 · Wealth Maximizer
+                    Investing Goal
                   </span>
                   <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400">
                     ~30% Tax Shield
                   </span>
                 </div>
-                <h4 className="text-base font-bold text-white mt-1">Tax-Advantaged Growth</h4>
+                <h4 className="text-base font-bold text-white mt-1">Funds & Tax-Advantaged Growth</h4>
                 <p className="text-xs text-gray-400">
-                  Max Roth IRA ($7k) + scale Traditional 401(k) to shield Rockville, MD taxes.
+                  Robinhood portfolio, 100% 401(k) match capture, and Roth IRA compounding.
                 </p>
               </div>
             </div>
             <div className="text-right">
-              <span className="text-sm font-bold text-emerald-400">{formatMoney(rothCurrent)}</span>
-              <p className="text-[10px] text-gray-500">Portfolio</p>
+              <span className="text-sm font-bold text-purple-400">{formatMoney(totalInvestmentAssets)}</span>
+              <p className="text-[10px] text-gray-500">Live Portfolio</p>
             </div>
           </div>
 
-          {/* Tax Shield Breakdown */}
-          <div className="mt-3.5 p-3 bg-black/40 rounded-2xl border border-white/5 space-y-2">
-            <div className="flex justify-between items-center text-xs">
-              <span className="text-gray-400">Federal Marginal Tax Rate:</span>
-              <span className="font-semibold text-white">22.0%</span>
+          {/* 3 Pillars */}
+          <div className="grid grid-cols-1 gap-2 pt-1">
+            <div className="p-3 bg-black/40 rounded-2xl border border-white/5 flex items-center justify-between text-xs">
+              <div>
+                <strong className="text-white block">1. 100% Employer 401(k) Match</strong>
+                <span className="text-[10px] text-gray-400">Capture 100% of free matching dollars upon transition.</span>
+              </div>
+              <button
+                onClick={() => setMatchCaptured(!matchCaptured)}
+                className={`px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all ${
+                  matchCaptured
+                    ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                    : 'bg-white/5 border-white/10 text-gray-400'
+                }`}
+              >
+                {matchCaptured ? '✓ Captured' : 'Mark Captured'}
+              </button>
             </div>
-            <div className="flex justify-between items-center text-xs">
-              <span className="text-gray-400">Maryland State Tax Rate:</span>
-              <span className="font-semibold text-white">4.75%</span>
+
+            <div className="p-3 bg-black/40 rounded-2xl border border-white/5 flex items-center justify-between text-xs">
+              <div>
+                <strong className="text-white block">2. Max Roth IRA ($7,000 / yr)</strong>
+                <span className="text-[10px] text-gray-400">Tax-free compounding in low-cost broad index funds.</span>
+              </div>
+              <span className="font-bold text-emerald-400">{formatMoney(rothCurrent)}</span>
             </div>
-            <div className="flex justify-between items-center text-xs">
-              <span className="text-gray-400">Montgomery County (Rockville) Tax:</span>
-              <span className="font-semibold text-white">3.20%</span>
-            </div>
-            <div className="h-px bg-white/10" />
-            <div className="flex justify-between items-center text-xs font-bold">
-              <span className="text-purple-300">Combined Marginal Tax Bracket:</span>
-              <span className="text-emerald-400 text-sm">~29.95% (~30%)</span>
+
+            <div className="p-3 bg-black/40 rounded-2xl border border-white/5 space-y-1.5 text-xs">
+              <div className="flex justify-between items-center font-semibold">
+                <span className="text-white">3. Traditional 401(k) Tax Shield</span>
+                <span className="text-emerald-400">~29.95% (~30%) Tax Saved</span>
+              </div>
+              <p className="text-[10px] text-gray-400 leading-relaxed">
+                Federal (22.0%) + Maryland (4.75%) + Montgomery County (3.20%). Every $1,000 saved into your 401(k) protects ~$300 from immediate taxes.
+              </p>
             </div>
           </div>
 
-          <p className="mt-2.5 text-[11px] text-gray-400 leading-relaxed">
-            Every $1,000 contributed to your Traditional 401(k) shields approximately <strong>$300 from immediate taxes</strong>. Max out your Roth IRA first for tax-free retirement compounding, then scale 401(k) contributions to lower taxable income.
-          </p>
-
-          {!isPhase5Unlocked && (
-            <p className="mt-2 text-[10px] text-gray-500 flex items-center gap-1">
-              <Lock size={12} /> Locked until 3-month emergency fund is fully funded ($10,000).
-            </p>
-          )}
+          <div className="p-3 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300 flex items-center justify-between">
+            <span>10-Yr Compounding Projection:</span>
+            <strong className="text-white text-sm">+{formatMoney(tenYearCompound)}</strong>
+          </div>
         </div>
       </div>
 
@@ -1655,6 +1404,7 @@ function OptimizationTab({
 }) {
   const [appliedAll, setAppliedAll] = useState(false);
   const [appliedCategory, setAppliedCategory] = useState({});
+  const [activeFilter, setActiveFilter] = useState('all'); // 'all', 'cut', 'reduce'
 
   const handleApplyAll = () => {
     onSetAllBudgets(optimization.recommendedBudgets);
@@ -1662,22 +1412,30 @@ function OptimizationTab({
     setTimeout(() => setAppliedAll(false), 3000);
   };
 
-  const handleApplySingle = (cat, target) => {
-    onUpdateBudget(cat, target);
-    setAppliedCategory((prev) => ({ ...prev, [cat]: true }));
+  const handleApplySingle = (catKey, target) => {
+    onUpdateBudget(catKey, target);
+    setAppliedCategory((prev) => ({ ...prev, [catKey]: true }));
     setTimeout(() => {
-      setAppliedCategory((prev) => ({ ...prev, [cat]: false }));
+      setAppliedCategory((prev) => ({ ...prev, [catKey]: false }));
     }, 2500);
   };
 
   const monthlySavings = optimization?.totalPotentialSavings || 0;
-  const tenYearCompound = Math.round(
-    monthlySavings * ((Math.pow(1 + 0.07 / 12, 120) - 1) / (0.07 / 12)),
-  );
+  const goalImpacts = optimization?.goalImpacts || {};
+  const carImpact = goalImpacts.car || { monthsSaved: 3, interestSaved: 450 };
+  const hysaImpact = goalImpacts.hysa || { weeksFaster: 4 };
+  const fundsImpact = goalImpacts.funds || { tenYearTotal: 45000 };
+
+  const displayedSuggestions =
+    activeFilter === 'all'
+      ? optimization.suggestions
+      : activeFilter === 'cut'
+      ? optimization.cutOutSuggestions
+      : optimization.spendLessSuggestions;
 
   return (
     <div className="space-y-5">
-      {/* 1. Hero Savings Card */}
+      {/* 1. Hero Optimization Card */}
       <div className="relative overflow-hidden p-5 rounded-3xl bg-gradient-to-br from-indigo-900/50 via-purple-900/35 to-zinc-900/90 backdrop-blur-2xl border border-indigo-500/25 shadow-2xl space-y-4">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-2.5">
@@ -1686,11 +1444,11 @@ function OptimizationTab({
             </div>
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-300">
-                Budget Optimization
+                Spending Optimization & Goal Accelerators
               </p>
               <h2 className="text-2xl font-extrabold text-white">
                 +{formatMoney(monthlySavings)}
-                <span className="text-xs text-gray-400 font-normal"> / month</span>
+                <span className="text-xs text-gray-400 font-normal"> / month recoverable cash</span>
               </h2>
             </div>
           </div>
@@ -1709,24 +1467,44 @@ function OptimizationTab({
         </div>
 
         <p className="text-xs text-gray-300 leading-relaxed">
-          Identified{' '}
-          <strong className="text-white font-semibold">
-            {optimization.suggestions.length} high-leverage opportunities
-          </strong>{' '}
-          to eliminate unnecessary fees, right-size discretionary categories, and boost your monthly surplus.
+          Actionable, concrete recommendations categorized into <strong>&quot;Cut This Out&quot;</strong> (100% elimination) and <strong>&quot;Spend Less Here&quot;</strong> (smart category trimming), tied directly to your financial goals.
         </p>
 
-        <div className="grid grid-cols-2 gap-2 pt-1">
-          <div className="p-3 bg-black/40 rounded-2xl border border-white/5">
-            <p className="text-[10px] uppercase text-gray-500 font-semibold mb-0.5">Annual Potential</p>
-            <p className="text-sm font-bold text-emerald-400">
-              +{formatMoney(monthlySavings * 12)} / yr
+        {/* Goals Acceleration Highway */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+          <div className="p-3 bg-black/40 rounded-2xl border border-amber-500/20 space-y-1">
+            <div className="flex items-center gap-1.5 text-xs text-amber-300 font-bold">
+              <Car size={14} /> 2018 Kia Payoff
+            </div>
+            <p className="text-sm font-extrabold text-white">
+              -{carImpact.monthsSaved} Months Earlier
+            </p>
+            <p className="text-[10px] text-gray-400">
+              Saves ~{formatMoney(carImpact.interestSaved)} in 12.5% loan interest.
             </p>
           </div>
-          <div className="p-3 bg-black/40 rounded-2xl border border-white/5">
-            <p className="text-[10px] uppercase text-gray-500 font-semibold mb-0.5">10-Yr Wealth Addition</p>
-            <p className="text-sm font-bold text-indigo-300">
-              +{formatMoney(tenYearCompound)}
+
+          <div className="p-3 bg-black/40 rounded-2xl border border-cyan-500/20 space-y-1">
+            <div className="flex items-center gap-1.5 text-xs text-cyan-300 font-bold">
+              <PiggyBank size={14} /> HYSA Move-In Buffer
+            </div>
+            <p className="text-sm font-extrabold text-white">
+              ~{hysaImpact.weeksFaster} Weeks Faster
+            </p>
+            <p className="text-[10px] text-gray-400">
+              Secures your $3,000 apartment & MVA reserve sooner.
+            </p>
+          </div>
+
+          <div className="p-3 bg-black/40 rounded-2xl border border-purple-500/20 space-y-1">
+            <div className="flex items-center gap-1.5 text-xs text-purple-300 font-bold">
+              <TrendingUp size={14} /> 10-Yr Wealth Addition
+            </div>
+            <p className="text-sm font-extrabold text-emerald-400">
+              +{formatMoney(fundsImpact.tenYearTotal)}
+            </p>
+            <p className="text-[10px] text-gray-400">
+              Compounded in Robinhood & Roth IRA at 8% annual return.
             </p>
           </div>
         </div>
@@ -1749,18 +1527,191 @@ function OptimizationTab({
         </button>
       </div>
 
-      {/* 2. 50 / 30 / 20 Diagnostic Meter */}
+      {/* 2. Action Filter Tabs: All, Cut This Out, Spend Less Here */}
+      <div className="flex bg-white/10 backdrop-blur-xl p-1 rounded-2xl border border-white/10 shadow-inner">
+        <button
+          onClick={() => setActiveFilter('all')}
+          className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold transition-all ${
+            activeFilter === 'all'
+              ? 'bg-white text-black shadow-md'
+              : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          All Recommendations ({optimization.suggestions.length})
+        </button>
+        <button
+          onClick={() => setActiveFilter('cut')}
+          className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
+            activeFilter === 'cut'
+              ? 'bg-rose-500 text-white shadow-md'
+              : 'text-rose-300 hover:text-white'
+          }`}
+        >
+          <Scissors size={13} />
+          <span>Cut This Out ({optimization.cutOutSuggestions?.length || 0})</span>
+        </button>
+        <button
+          onClick={() => setActiveFilter('reduce')}
+          className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
+            activeFilter === 'reduce'
+              ? 'bg-blue-600 text-white shadow-md'
+              : 'text-blue-300 hover:text-white'
+          }`}
+        >
+          <TrendingDown size={13} />
+          <span>Spend Less Here ({optimization.spendLessSuggestions?.length || 0})</span>
+        </button>
+      </div>
+
+      {/* 3. Detailed Action Cards */}
+      <div className="space-y-3.5">
+        {displayedSuggestions.length === 0 ? (
+          <GlassCard title="No Items Found" icon={<CheckCircle2 className="text-emerald-400" />}>
+            <p className="text-xs text-gray-400 py-4 text-center">
+              No recommendations matching this filter. Your budget is lean!
+            </p>
+          </GlassCard>
+        ) : (
+          displayedSuggestions.map((sug) => {
+            const isApplied =
+              budgets[sug.categoryKey] === sug.targetSpend ||
+              budgets[sug.category] === sug.targetSpend ||
+              appliedCategory[sug.categoryKey] ||
+              appliedCategory[sug.category];
+
+            return (
+              <div
+                key={sug.id}
+                className={`p-4 rounded-3xl backdrop-blur-xl border shadow-lg space-y-3 transition-all ${
+                  sug.actionType === 'cut'
+                    ? 'bg-rose-950/20 border-rose-500/25'
+                    : 'bg-zinc-900/80 border-white/10'
+                }`}
+              >
+                {/* Header: Action Badge & Goal Alignment */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="space-y-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span
+                        className={`text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${
+                          sug.actionType === 'cut'
+                            ? 'bg-rose-500/25 text-rose-300 border-rose-500/40'
+                            : 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                        }`}
+                      >
+                        {sug.actionBadge}
+                      </span>
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/20">
+                        {sug.goalTarget === 'car'
+                          ? '🏎️ Fuels Kia Payoff'
+                          : sug.goalTarget === 'hysa'
+                          ? '🏦 Fuels HYSA Buffer'
+                          : '📈 Fuels Investing'}
+                      </span>
+                    </div>
+                    <h4 className="text-base font-bold text-white">{sug.title}</h4>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="text-sm font-extrabold text-emerald-400">
+                      +{formatMoney(sug.monthlySavings)}/mo
+                    </span>
+                    <p className="text-[10px] text-gray-500">+{formatMoney(sug.annualSavings)}/yr</p>
+                  </div>
+                </div>
+
+                {/* EXACT ACTION INSTRUCTION */}
+                <div
+                  className={`p-3 rounded-2xl border text-xs leading-relaxed ${
+                    sug.actionType === 'cut'
+                      ? 'bg-rose-950/30 border-rose-500/20 text-rose-100'
+                      : 'bg-black/40 border-white/10 text-gray-200'
+                  }`}
+                >
+                  <strong className="text-white block font-semibold mb-0.5">
+                    {sug.actionType === 'cut' ? '🛑 What to Cut Out:' : '📉 How to Spend Less:'}
+                  </strong>
+                  {sug.exactAction}
+                </div>
+
+                {/* Current Spend vs Target Ceiling Meter */}
+                <div className="p-3 bg-black/40 rounded-2xl border border-white/5 flex items-center justify-between text-xs">
+                  <div>
+                    <span className="text-gray-500 block text-[10px]">Current Spend</span>
+                    <span className="font-semibold text-gray-300">{formatMoney(sug.currentSpend)}</span>
+                  </div>
+                  <TrendingDown size={14} className="text-emerald-400" />
+                  <div>
+                    <span className="text-gray-500 block text-[10px]">Target Cap</span>
+                    <span className="font-bold text-white">{formatMoney(sug.targetSpend)}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-gray-500 block text-[10px]">Monthly Savings</span>
+                    <span className="font-bold text-emerald-400">+{formatMoney(sug.monthlySavings)}</span>
+                  </div>
+                </div>
+
+                {/* Top Contributing Transactions */}
+                {sug.topTransactions && sug.topTransactions.length > 0 && (
+                  <div className="p-2.5 bg-black/30 rounded-xl border border-white/5 space-y-1">
+                    <p className="text-[10px] uppercase tracking-wider font-semibold text-gray-500">
+                      Culprit Line Items Detected:
+                    </p>
+                    <div className="space-y-1">
+                      {sug.topTransactions.map((tx, idx) => (
+                        <div key={tx.id || idx} className="flex justify-between items-center text-[11px]">
+                          <span className="text-gray-300 truncate max-w-[200px]">{tx.name}</span>
+                          <span className="text-white font-medium">{formatMoney(tx.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Direct Goal Impact */}
+                <p className="text-[11px] text-emerald-400 font-medium flex items-center gap-1.5">
+                  <ArrowRight size={12} /> {sug.goalImpact}
+                </p>
+
+                {/* 1-Click Action Button */}
+                <div className="pt-1">
+                  <button
+                    onClick={() => handleApplySingle(sug.categoryKey || sug.category, sug.targetSpend)}
+                    className={`w-full py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all ${
+                      isApplied
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 cursor-default'
+                        : sug.actionType === 'cut'
+                        ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-md active:scale-95'
+                        : 'bg-white/10 hover:bg-white/20 text-white active:scale-95'
+                    }`}
+                  >
+                    {isApplied ? (
+                      <>
+                        <CheckCircle2 size={13} /> Target Budget Cap Active
+                      </>
+                    ) : (
+                      <>
+                        <Target size={13} /> {sug.actionLabel}
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* 4. 50 / 30 / 20 Rule Diagnostic */}
       <GlassCard
         title="50 / 30 / 20 Rule Diagnostic"
         icon={<PieChart className="text-purple-400" />}
         amount={`${optimization.budgetRatio.wants.pct}% Wants`}
       >
         <p className="text-xs text-gray-400 mb-3">
-          Comparing your current spending allocation against gold-standard financial targets.
+          Comparing your current spending allocation against healthy financial targets.
         </p>
 
         <div className="space-y-3">
-          {/* Needs */}
           <div>
             <div className="flex justify-between text-xs font-medium mb-1">
               <span className="text-gray-300">Needs (Fixed Bills & Debts)</span>
@@ -1776,7 +1727,6 @@ function OptimizationTab({
             </div>
           </div>
 
-          {/* Wants */}
           <div>
             <div className="flex justify-between text-xs font-medium mb-1">
               <span className="text-gray-300">Wants (Discretionary Variable)</span>
@@ -1792,7 +1742,6 @@ function OptimizationTab({
             </div>
           </div>
 
-          {/* Savings */}
           <div>
             <div className="flex justify-between text-xs font-medium mb-1">
               <span className="text-gray-300">Savings & Surplus</span>
@@ -1809,142 +1758,6 @@ function OptimizationTab({
           </div>
         </div>
       </GlassCard>
-
-      {/* 3. Personalized Spending Cut Candidates */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between px-1">
-          <h3 className="text-xs uppercase tracking-wider font-semibold text-gray-400">
-            Recommended Spending Cuts ({optimization.suggestions.length})
-          </h3>
-          <span className="text-[10px] text-indigo-400 font-semibold">Priority Ranked</span>
-        </div>
-
-        {optimization.suggestions.length === 0 ? (
-          <GlassCard title="Everything Optimized" icon={<CheckCircle2 className="text-emerald-400" />}>
-            <p className="text-xs text-gray-400 py-3 text-center">
-              Your spending is lean and fully aligned with your budget targets!
-            </p>
-          </GlassCard>
-        ) : (
-          optimization.suggestions.map((sug) => {
-            const isApplied = budgets[sug.category] === sug.targetSpend || appliedCategory[sug.category];
-            return (
-              <div
-                key={sug.id}
-                className="p-4 rounded-3xl bg-zinc-900/80 backdrop-blur-xl border border-white/10 shadow-lg space-y-3 hover:border-white/15 transition-all"
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <span
-                      className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                        sug.impact === 'quick-win'
-                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                          : sug.impact === 'high'
-                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                          : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                      }`}
-                    >
-                      {sug.badge}
-                    </span>
-                    <h4 className="text-sm font-bold text-white mt-1.5">{sug.title}</h4>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-sm font-bold text-emerald-400">
-                      +{formatMoney(sug.monthlySavings)}/mo
-                    </span>
-                    <p className="text-[10px] text-gray-500">+{formatMoney(sug.annualSavings)}/yr</p>
-                  </div>
-                </div>
-
-                <div className="p-3 bg-black/40 rounded-2xl border border-white/5 flex items-center justify-between text-xs">
-                  <div>
-                    <span className="text-gray-500 block text-[10px]">Current Spend</span>
-                    <span className="font-semibold text-gray-300">{formatMoney(sug.currentSpend)}</span>
-                  </div>
-                  <TrendingDown size={14} className="text-emerald-400" />
-                  <div>
-                    <span className="text-gray-500 block text-[10px]">Target Cap</span>
-                    <span className="font-bold text-white">{formatMoney(sug.targetSpend)}</span>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-gray-500 block text-[10px]">Monthly Cut</span>
-                    <span className="font-bold text-emerald-400">-{formatMoney(sug.monthlySavings)}</span>
-                  </div>
-                </div>
-
-                <p className="text-xs text-gray-400 leading-relaxed">{sug.advice}</p>
-
-                <div className="pt-1 flex gap-2">
-                  <button
-                    onClick={() => handleApplySingle(sug.category, sug.targetSpend)}
-                    className={`flex-1 py-2 px-3 rounded-xl font-semibold text-xs flex items-center justify-center gap-1.5 transition-all ${
-                      isApplied
-                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 cursor-default'
-                        : 'bg-white/10 hover:bg-white/20 text-white active:scale-95'
-                    }`}
-                  >
-                    {isApplied ? (
-                      <>
-                        <CheckCircle2 size={13} /> Target Cap Applied
-                      </>
-                    ) : (
-                      <>
-                        <Target size={13} /> {sug.actionLabel}
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      {/* 4. Goal Accelerator Impact Card */}
-      {optimization.debtAccelerationMonths ? (
-        <GlassCard
-          title="Debt Payoff Accelerator"
-          icon={<Car className="text-red-400" />}
-          amount={`-${optimization.debtAccelerationMonths} Months`}
-        >
-          <p className="text-xs text-gray-300 leading-relaxed">
-            By applying these spending cuts and directing your{' '}
-            <strong className="text-emerald-400 font-semibold">
-              +{formatMoney(monthlySavings)}/mo
-            </strong>{' '}
-            surplus directly into debt payoff, you will be completely debt-free{' '}
-            <strong className="text-white font-bold">{optimization.debtAccelerationMonths} months earlier</strong>{' '}
-            and save hundreds in interest charges!
-          </p>
-          <button
-            onClick={() => onNavigateTab?.('debt')}
-            className="mt-3 w-full py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-semibold text-gray-200 flex items-center justify-center gap-1 transition-colors"
-          >
-            Review Debt Strategy <ArrowRight size={13} />
-          </button>
-        </GlassCard>
-      ) : (
-        <GlassCard
-          title="10-Year Wealth Multiplier"
-          icon={<TrendingUp className="text-emerald-400" />}
-          amount={formatMoney(tenYearCompound)}
-        >
-          <p className="text-xs text-gray-300 leading-relaxed">
-            If you channel your{' '}
-            <strong className="text-emerald-400 font-semibold">
-              +{formatMoney(monthlySavings)}/mo
-            </strong>{' '}
-            optimized savings into low-cost index funds at an average 7% annual return, it compounds into{' '}
-            <strong className="text-white font-bold">{formatMoney(tenYearCompound)}</strong> in 10 years!
-          </p>
-          <button
-            onClick={() => onNavigateTab?.('wealth')}
-            className="mt-3 w-full py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-semibold text-gray-200 flex items-center justify-center gap-1 transition-colors"
-          >
-            View Invest & Save Waterfall <ArrowRight size={13} />
-          </button>
-        </GlassCard>
-      )}
     </div>
   );
 }
