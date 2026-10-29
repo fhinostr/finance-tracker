@@ -243,15 +243,48 @@ Deno.serve(async (req) => {
           }
         }
 
-        results.transactions = txList.map((tx: any) => ({
-          id: tx.transaction_id,
-          name: tx.merchant_name || tx.name,
-          amount: Math.abs(tx.amount),
-          kind: tx.amount < 0 ? 'income' : 'expense',
-          category: tx.personal_finance_category?.primary || tx.category?.[0] || 'Other',
-          date: tx.authorized_date || tx.date,
-          pending: Boolean(tx.pending),
-        }));
+        const accountMap = new Map((results.accounts as any[] || []).map((a: any) => [a.id, a]));
+
+        results.transactions = txList.map((tx: any) => {
+          const acc = accountMap.get(tx.account_id);
+          const isCredit = acc?.type === 'credit' || acc?.subtype?.toLowerCase().includes('credit');
+          const primaryCat = tx.personal_finance_category?.primary || tx.category?.[0] || 'Other';
+          const catLower = primaryCat.toLowerCase();
+          const nameLower = (tx.merchant_name || tx.name || '').toLowerCase();
+
+          const isTransferOrPayment =
+            catLower.includes('loan_payments') ||
+            catLower.includes('transfer') ||
+            catLower.includes('payment') ||
+            nameLower.includes('payment') ||
+            nameLower.includes('autopay') ||
+            nameLower.includes('credit card');
+
+          let kind = 'expense';
+          if (isCredit) {
+            // Credit card transactions: positive is purchase/charge, negative is payment toward balance (never income!)
+            kind = tx.amount < 0 ? 'payment' : 'expense';
+          } else {
+            // Depository / Bank account: negative is money coming in. Exclude loan payments and transfers from income.
+            if (tx.amount < 0) {
+              kind = isTransferOrPayment ? 'transfer' : 'income';
+            } else {
+              kind = 'expense';
+            }
+          }
+
+          return {
+            id: tx.transaction_id,
+            name: tx.merchant_name || tx.name,
+            amount: Math.abs(tx.amount),
+            kind,
+            category: primaryCat,
+            date: tx.authorized_date || tx.date,
+            pending: Boolean(tx.pending),
+            accountId: tx.account_id,
+            isCredit,
+          };
+        });
       } catch (e: any) {
         console.warn('Transactions sync error:', e?.message);
       }

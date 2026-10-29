@@ -88,6 +88,8 @@ export default function PersonalFinanceTracker() {
     savingsSplit,
     categoryTotals,
   } = useMemo(() => {
+    const { totalCreditBalance } = categorizeAccounts(linkedAccounts);
+
     // Income: recurring monthly salary/retainers + live client hourly deposits this month
     const thisMonth = currentMonthKey();
     const monthlyIncomes = entries.filter((e) => e.kind === 'income' && e.frequency === 'monthly');
@@ -98,9 +100,36 @@ export default function PersonalFinanceTracker() {
       .filter((e) => e.optional)
       .reduce((sum, e) => sum + e.amount, 0);
 
+    const isClientDeposit = (e) => {
+      if (e.kind !== 'income') return false;
+      if (e.isCredit) return false;
+      const name = (e.name || '').toLowerCase();
+      const cat = (e.category || '').toLowerCase();
+      // Exclude credit card payments, bill autopay, card refunds, and internal account transfers from income
+      if (
+        name.includes('credit card') ||
+        name.includes('card payment') ||
+        name.includes('payment - thank you') ||
+        name.includes('payment thank you') ||
+        name.includes('autopay') ||
+        name.includes('chase card') ||
+        name.includes('apple card') ||
+        name.includes('citi') ||
+        name.includes('amex') ||
+        name.includes('transfer') ||
+        cat.includes('loan_payments') ||
+        cat.includes('transfer_in') ||
+        cat.includes('transfer_out') ||
+        cat.includes('transfer')
+      ) {
+        return false;
+      }
+      return true;
+    };
+
     const liveDeposits = entries.filter(
       (e) =>
-        e.kind === 'income' &&
+        isClientDeposit(e) &&
         e.frequency !== 'monthly' &&
         (e.date?.startsWith(thisMonth) ?? true),
     );
@@ -122,8 +151,8 @@ export default function PersonalFinanceTracker() {
     const debtList = entries.filter((e) => e.kind === 'debt');
     const debtMonthly = debtList.reduce((sum, d) => sum + (d.minPayment || 0) + (d.extraPayment || 0), 0);
 
-    // Cash flow surplus
-    const surplus = Math.max(net - fixedSum - variableSum - debtMonthly, 0);
+    // Cash flow surplus: deducts unpaid credit card balance as what is owed
+    const surplus = Math.max(net - fixedSum - variableSum - debtMonthly - totalCreditBalance, 0);
     const toDebt = Math.round(surplus * 0.35);
     const toSavings = surplus - toDebt;
 
@@ -149,7 +178,7 @@ export default function PersonalFinanceTracker() {
       savingsSplit: toSavings,
       categoryTotals: catMap,
     };
-  }, [entries, includeBonus]);
+  }, [entries, includeBonus, linkedAccounts]);
 
   const optimization = useMemo(() => {
     return generateOptimizationInsights({
@@ -463,13 +492,13 @@ function DashboardTab({
         >
           <div className="flex items-center gap-1.5 mb-1.5 text-amber-400">
             <CreditCard size={15} />
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Credit Cards</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-400">Credit Cards (Owed)</span>
           </div>
           <p className="text-sm sm:text-base font-bold text-amber-300 tracking-tight truncate">
             {formatMoney(totalCreditBalance)}
           </p>
-          <p className="text-[10px] text-gray-500 mt-0.5 truncate">
-            {creditAccounts.length > 0 ? `${creditAccounts.length} ${creditAccounts.length === 1 ? 'card' : 'cards'}` : 'Tap to link'}
+          <p className="text-[10px] text-amber-400/80 mt-0.5 truncate">
+            {creditAccounts.length > 0 ? (totalCreditBalance > 0 ? 'Balance owed (Liability)' : 'No balance owed') : 'Tap to link'}
           </p>
         </button>
 
