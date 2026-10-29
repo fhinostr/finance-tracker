@@ -24,7 +24,9 @@ class ErrorBoundary extends React.Component {
           </p>
           <div style={{ display: 'flex', gap: '12px' }}>
             <button
-              onClick={() => window.location.reload()}
+              onClick={() => {
+                window.location.href = window.location.pathname + '?v=' + Date.now();
+              }}
               style={{ background: '#2563eb', color: 'white', border: 'none', padding: '10px 18px', borderRadius: '12px', cursor: 'pointer', fontWeight: 600 }}
             >
               Reload Page
@@ -33,8 +35,9 @@ class ErrorBoundary extends React.Component {
               onClick={() => {
                 try {
                   localStorage.clear();
+                  sessionStorage.clear();
                 } catch {}
-                window.location.reload();
+                window.location.href = window.location.pathname + '?v=' + Date.now();
               }}
               style={{ background: '#27272a', color: '#f87171', border: '1px solid #3f3f46', padding: '10px 18px', borderRadius: '12px', cursor: 'pointer', fontWeight: 600 }}
             >
