@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { usePlaidLink } from 'react-plaid-link';
 import {
   X,
@@ -15,6 +15,11 @@ import {
   ExternalLink,
   ChevronDown,
   ChevronUp,
+  Plus,
+  Edit2,
+  Check,
+  PiggyBank,
+  HelpCircle,
 } from 'lucide-react';
 import { formatMoney, getStoredAccounts, saveStoredAccounts } from '../lib/store.js';
 import {
@@ -39,6 +44,84 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
   const [showKeySettings, setShowKeySettings] = useState(!initialPlaid.clientId || !initialPlaid.secret);
   const [keysSaved, setKeysSaved] = useState(false);
   const [isSyncingAll, setIsSyncingAll] = useState(false);
+
+  // Manual Account Entry State
+  const [showManualForm, setShowManualForm] = useState(false);
+  const [manualName, setManualName] = useState('');
+  const [manualType, setManualType] = useState('bank'); // bank, savings, credit, investment
+  const [manualBalance, setManualBalance] = useState('');
+  const [manualMask, setManualMask] = useState('');
+
+  // Inline Account Balance Editing
+  const [editingAccountId, setEditingAccountId] = useState(null);
+  const [editBalanceVal, setEditBalanceVal] = useState('');
+
+  // Troubleshooting dropdown
+  const [showPlaidTroubleshoot, setShowPlaidTroubleshoot] = useState(false);
+
+  const handleAddManualAccount = (e) => {
+    e.preventDefault();
+    if (!manualName.trim()) return;
+    const balanceNum = parseFloat(manualBalance) || 0;
+    const current = getStoredAccounts();
+    const isSavings = manualType === 'savings';
+    const isCredit = manualType === 'credit';
+    const isInv = manualType === 'investment';
+    const resolvedType = isInv ? 'investment' : isCredit ? 'credit' : 'bank';
+
+    const newAcc = {
+      id: `manual-${Date.now()}`,
+      name: manualName.trim(),
+      type: resolvedType,
+      subtype: isSavings
+        ? 'savings'
+        : isCredit
+        ? 'credit card'
+        : isInv
+        ? 'brokerage'
+        : 'checking',
+      balance: balanceNum,
+      available: balanceNum,
+      mask: manualMask.trim().slice(-4) || '••••',
+      accessToken: null,
+      lastSynced: 'Manual entry',
+      isManual: true,
+    };
+
+    const next = [newAcc, ...current];
+    saveStoredAccounts(next);
+    setAccounts(next);
+    setManualName('');
+    setManualBalance('');
+    setManualMask('');
+    setShowManualForm(false);
+    setStatusMessage(`Added ${newAcc.name} (${formatMoney(balanceNum)})`);
+  };
+
+  const handleSaveBalanceEdit = (id) => {
+    const num = parseFloat(editBalanceVal);
+    if (isNaN(num)) {
+      setEditingAccountId(null);
+      return;
+    }
+    const current = getStoredAccounts();
+    const next = current.map((a) => {
+      if (a.id === id) {
+        return {
+          ...a,
+          balance: num,
+          available: num,
+          lastSynced: 'Just updated',
+        };
+      }
+      return a;
+    });
+    saveStoredAccounts(next);
+    setAccounts(next);
+    setEditingAccountId(null);
+    setEditBalanceVal('');
+    setStatusMessage('Balance updated!');
+  };
 
   // Initialize or Refresh Link Token
   const requestLinkToken = useCallback(async (accountType = 'bank') => {
@@ -407,74 +490,265 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
             <h3 className="text-xs uppercase tracking-wider font-semibold text-gray-400">
               Connected Accounts {accounts.length > 0 ? `(${accounts.length})` : ''}
             </h3>
-            {accounts.length > 0 && (
+            <div className="flex items-center gap-2">
               <button
-                onClick={syncAllAccounts}
-                disabled={isSyncingAll}
-                className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 font-medium px-2.5 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 active:scale-95 transition-all"
+                type="button"
+                onClick={() => setShowManualForm(!showManualForm)}
+                className="flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300 font-semibold px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 active:scale-95 transition-all border border-emerald-500/20"
               >
-                <RefreshCw size={13} className={isSyncingAll ? 'animate-spin' : ''} />
-                <span>{isSyncingAll ? 'Syncing...' : 'Sync All'}</span>
+                <Plus size={13} />
+                <span>{showManualForm ? 'Close' : 'Add Manually'}</span>
               </button>
-            )}
+              {accounts.length > 0 && (
+                <button
+                  onClick={syncAllAccounts}
+                  disabled={isSyncingAll}
+                  className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 font-medium px-2.5 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 active:scale-95 transition-all"
+                >
+                  <RefreshCw size={13} className={isSyncingAll ? 'animate-spin' : ''} />
+                  <span>{isSyncingAll ? 'Syncing...' : 'Sync All'}</span>
+                </button>
+              )}
+            </div>
           </div>
+
+          {/* Manual Account Add Form */}
+          <AnimatePresence>
+            {showManualForm && (
+              <motion.form
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                onSubmit={handleAddManualAccount}
+                className="p-4 rounded-2xl bg-white/5 border border-emerald-500/30 space-y-3 overflow-hidden"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                    <Plus size={14} /> Add Account / Set Balances
+                  </span>
+                  <span className="text-[10px] text-gray-400">Directly syncs to live dashboard</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setManualType('bank')}
+                    className={`py-1.5 px-2 rounded-xl text-xs font-medium border flex items-center justify-center gap-1.5 transition-all ${
+                      manualType === 'bank'
+                        ? 'bg-blue-500/20 border-blue-500 text-blue-300'
+                        : 'bg-black/20 border-white/10 text-gray-400'
+                    }`}
+                  >
+                    <Building2 size={13} /> Checking
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setManualType('savings')}
+                    className={`py-1.5 px-2 rounded-xl text-xs font-medium border flex items-center justify-center gap-1.5 transition-all ${
+                      manualType === 'savings'
+                        ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300'
+                        : 'bg-black/20 border-white/10 text-gray-400'
+                    }`}
+                  >
+                    <PiggyBank size={13} /> Savings / HYSA
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setManualType('credit')}
+                    className={`py-1.5 px-2 rounded-xl text-xs font-medium border flex items-center justify-center gap-1.5 transition-all ${
+                      manualType === 'credit'
+                        ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+                        : 'bg-black/20 border-white/10 text-gray-400'
+                    }`}
+                  >
+                    <CreditCard size={13} /> Credit Card
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setManualType('investment')}
+                    className={`py-1.5 px-2 rounded-xl text-xs font-medium border flex items-center justify-center gap-1.5 transition-all ${
+                      manualType === 'investment'
+                        ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
+                        : 'bg-black/20 border-white/10 text-gray-400'
+                    }`}
+                  >
+                    <TrendingUp size={13} /> Robinhood
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    required
+                    value={manualName}
+                    onChange={(e) => setManualName(e.target.value)}
+                    placeholder={
+                      manualType === 'investment'
+                        ? 'Robinhood Portfolio'
+                        : manualType === 'credit'
+                        ? 'Credit Card Name (e.g. Apple Card)'
+                        : manualType === 'savings'
+                        ? 'High-Yield Savings (HYSA)'
+                        : 'Checking Account Name'
+                    }
+                    className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/15 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500"
+                  />
+
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-2 text-xs text-gray-400">$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        required
+                        value={manualBalance}
+                        onChange={(e) => setManualBalance(e.target.value)}
+                        placeholder="Current Balance"
+                        className="w-full pl-6 pr-3 py-2 rounded-xl bg-black/40 border border-white/15 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                    <input
+                      type="text"
+                      maxLength={4}
+                      value={manualMask}
+                      onChange={(e) => setManualMask(e.target.value)}
+                      placeholder="Last 4 (opt)"
+                      className="w-24 px-3 py-2 rounded-xl bg-black/40 border border-white/15 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500 text-center"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="submit"
+                    className="flex-1 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all"
+                  >
+                    <Plus size={14} /> Save Account
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowManualForm(false)}
+                    className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs text-gray-300 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </motion.form>
+            )}
+          </AnimatePresence>
+
           {accounts.length === 0 ? (
-            <div className="p-5 rounded-2xl bg-white/5 border border-dashed border-white/10 text-center">
-              <p className="text-sm text-gray-400">No accounts linked yet.</p>
-              <p className="text-xs text-gray-500 mt-1">Connect your bank or Robinhood to auto-sync balances.</p>
+            <div className="p-5 rounded-2xl bg-white/5 border border-dashed border-white/10 text-center space-y-2">
+              <p className="text-sm text-gray-300 font-medium">No accounts linked yet.</p>
+              <p className="text-xs text-gray-500 max-w-sm mx-auto">
+                Connect your live bank or Robinhood account below, or tap <strong>Add Manually</strong> above to set your real balances directly.
+              </p>
             </div>
           ) : (
             accounts.map((acc) => (
               <div
                 key={acc.id}
-                className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between"
+                className="p-3.5 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between gap-3"
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <div
-                    className={`p-2.5 rounded-xl ${
+                    className={`p-2.5 rounded-xl shrink-0 ${
                       acc.type === 'investment'
                         ? 'bg-emerald-500/20 text-emerald-400'
                         : acc.type === 'credit'
                         ? 'bg-amber-500/20 text-amber-400'
+                        : acc.subtype?.toLowerCase().includes('savings')
+                        ? 'bg-cyan-500/20 text-cyan-400'
                         : 'bg-blue-500/20 text-blue-400'
                     }`}
                   >
                     {acc.type === 'investment' ? (
-                      <TrendingUp size={20} />
+                      <TrendingUp size={18} />
                     ) : acc.type === 'credit' ? (
-                      <CreditCard size={20} />
+                      <CreditCard size={18} />
+                    ) : acc.subtype?.toLowerCase().includes('savings') ? (
+                      <PiggyBank size={18} />
                     ) : (
-                      <Building2 size={20} />
+                      <Building2 size={18} />
                     )}
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-semibold text-white">{acc.name}</p>
-                      <span className="text-[10px] text-gray-400 bg-white/10 px-1.5 py-0.5 rounded">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 truncate">
+                      <p className="text-sm font-semibold text-white truncate">{acc.name}</p>
+                      <span className="text-[10px] text-gray-400 bg-white/10 px-1.5 py-0.5 rounded shrink-0">
                         ••••{acc.mask}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-400">
-                      Balance: <span className="text-white font-medium">{formatMoney(acc.balance)}</span> · Synced {acc.lastSynced}
-                    </p>
+
+                    {editingAccountId === acc.id ? (
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className="text-xs text-gray-400">$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          autoFocus
+                          value={editBalanceVal}
+                          onChange={(e) => setEditBalanceVal(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveBalanceEdit(acc.id);
+                            if (e.key === 'Escape') setEditingAccountId(null);
+                          }}
+                          className="w-24 px-2 py-0.5 rounded bg-black/60 border border-emerald-500 text-xs text-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleSaveBalanceEdit(acc.id)}
+                          className="p-1 rounded bg-emerald-500 text-black hover:bg-emerald-400"
+                        >
+                          <Check size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingAccountId(null)}
+                          className="p-1 rounded bg-white/10 text-gray-400 hover:text-white"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <p className="text-xs text-gray-400">
+                          Balance: <span className="text-white font-medium">{formatMoney(acc.balance)}</span>
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingAccountId(acc.id);
+                            setEditBalanceVal(String(acc.balance));
+                          }}
+                          title="Edit balance"
+                          className="text-gray-500 hover:text-emerald-400 transition-colors"
+                        >
+                          <Edit2 size={11} />
+                        </button>
+                        <span className="text-[10px] text-gray-500">· {acc.lastSynced}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => syncAccount(acc)}
-                    disabled={syncingId === acc.id}
-                    title="Sync latest transactions"
-                    className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-gray-300 transition-colors"
-                  >
-                    <RefreshCw size={15} className={syncingId === acc.id ? 'animate-spin text-blue-400' : ''} />
-                  </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {acc.accessToken && (
+                    <button
+                      onClick={() => syncAccount(acc)}
+                      disabled={syncingId === acc.id}
+                      title="Sync latest transactions"
+                      className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-gray-300 transition-colors"
+                    >
+                      <RefreshCw size={14} className={syncingId === acc.id ? 'animate-spin text-blue-400' : ''} />
+                    </button>
+                  )}
                   <button
                     onClick={() => removeAccount(acc.id)}
                     title="Unlink account"
                     className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors"
                   >
-                    <Trash2 size={15} />
+                    <Trash2 size={14} />
                   </button>
                 </div>
               </div>
@@ -510,6 +784,34 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
               >
                 <TrendingUp size={18} /> Connect Robinhood Portfolio
               </button>
+
+              {/* Troubleshooting Card for 'Couldn't connect to your institution' */}
+              <div className="p-3 rounded-2xl bg-white/5 border border-white/10 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setShowPlaidTroubleshoot(!showPlaidTroubleshoot)}
+                  className="w-full flex items-center justify-between text-xs text-gray-300 hover:text-white font-medium"
+                >
+                  <div className="flex items-center gap-1.5 text-amber-400">
+                    <AlertCircle size={14} />
+                    <span>Plaid says &quot;Couldn&apos;t connect to your institution&quot;?</span>
+                  </div>
+                  {showPlaidTroubleshoot ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+                {showPlaidTroubleshoot && (
+                  <div className="text-[11px] text-gray-400 space-y-2 pt-2 border-t border-white/5 leading-relaxed">
+                    <p>
+                      <strong className="text-white">1. Sandbox vs. Production:</strong> If your Plaid Environment is set to <em>Sandbox</em>, Plaid will reject real logins with this message. To connect your real bank, switch the environment to <strong>Production</strong> using your Production secret under <em>Plaid API Credentials</em> below.
+                    </p>
+                    <p>
+                      <strong className="text-white">2. Robinhood Brokerage Limitation:</strong> Robinhood frequently restricts third-party aggregators or delays automated 2FA verification. Use the <strong>&quot;Add Manually&quot;</strong> button above to track your real Robinhood balance right away.
+                    </p>
+                    <p>
+                      <strong className="text-white">3. OAuth / Bank Maintenance:</strong> Banks like Chase or Capital One occasionally undergo routine downtime. If Plaid doesn&apos;t complete, you can enter your balances manually and sync again anytime.
+                    </p>
+                  </div>
+                )}
+              </div>
 
               {plaidEnv === 'sandbox' && (
                 <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300 space-y-1">

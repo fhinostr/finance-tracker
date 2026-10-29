@@ -20,6 +20,10 @@ import {
   CheckCircle2,
   Target,
   TrendingDown,
+  Lock,
+  Unlock,
+  Info,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   useFinanceData,
@@ -79,7 +83,8 @@ export default function PersonalFinanceTracker() {
     savingsSplit,
     categoryTotals,
   } = useMemo(() => {
-    // Income
+    // Income: recurring monthly salary/retainers + live client hourly deposits this month
+    const thisMonth = currentMonthKey();
     const monthlyIncomes = entries.filter((e) => e.kind === 'income' && e.frequency === 'monthly');
     const base = monthlyIncomes
       .filter((e) => !e.optional)
@@ -88,14 +93,21 @@ export default function PersonalFinanceTracker() {
       .filter((e) => e.optional)
       .reduce((sum, e) => sum + e.amount, 0);
 
-    const net = includeBonus ? base + bonus : base;
+    const liveDeposits = entries.filter(
+      (e) =>
+        e.kind === 'income' &&
+        e.frequency !== 'monthly' &&
+        (e.date?.startsWith(thisMonth) ?? true),
+    );
+    const liveDepositSum = liveDeposits.reduce((sum, e) => sum + e.amount, 0);
+
+    const net = (includeBonus ? base + bonus : base) + liveDepositSum;
 
     // Fixed overhead (recurring monthly expenses)
     const fixed = entries.filter((e) => e.kind === 'expense' && e.frequency === 'monthly');
     const fixedSum = fixed.reduce((sum, e) => sum + e.amount, 0);
 
     // Variable expenses (one-time expenses this month)
-    const thisMonth = currentMonthKey();
     const variable = entries.filter(
       (e) => e.kind === 'expense' && e.frequency === 'one-time' && (e.date?.startsWith(thisMonth) ?? true),
     );
@@ -304,10 +316,15 @@ export default function PersonalFinanceTracker() {
                 debts={debts}
                 entries={entries}
                 linkedAccounts={linkedAccounts}
+                cashSurplus={cashSurplus}
+                currentNet={currentNet}
+                totalFixed={totalFixed}
+                totalVariable={totalVariable}
                 onOpenLink={() => {
                   setLinkedAccounts(getStoredAccounts());
                   setShowLinkedModal(true);
                 }}
+                onNavigateTab={setActiveTab}
               />
             )}
           </motion.div>
@@ -859,8 +876,19 @@ function DebtTab({ debts, entries, onDelete, onAdd }) {
   );
 }
 
-function WealthTab({ debts, entries, linkedAccounts = [], onOpenLink }) {
+function WealthTab({
+  debts = [],
+  entries = [],
+  linkedAccounts = [],
+  cashSurplus = 0,
+  currentNet: _currentNet = 0,
+  totalFixed = 0,
+  totalVariable = 0,
+  onOpenLink,
+  onNavigateTab,
+}) {
   const {
+    bankAccounts,
     investmentAccounts,
     totalCashInBank,
     totalCreditBalance,
@@ -873,19 +901,597 @@ function WealthTab({ debts, entries, linkedAccounts = [], onOpenLink }) {
   const totalDebts = totalCreditBalance + totalUserDebts;
   const netWorth = totalBankAssets + totalInvestmentAssets - totalDebts;
 
-  const hasAnyAccounts = linkedAccounts.length > 0;
-  const hasAnyDebts = totalDebts > 0;
+  // Timeline Phase: Current (Now - Dec 2026) vs Future (Jan 2027+ Rockville Move)
+  const isSystem2027 = new Date().getFullYear() >= 2027;
+  const [timelinePhase, setTimelinePhase] = useState(isSystem2027 ? 'future' : 'current');
+  const [matchCaptured, setMatchCaptured] = useState(false);
+
+  // Dynamic Surplus Calculation based on Phase:
+  // Current Phase: Variable hourly client income based on live deposits minus expenses
+  // Future Phase: $90k salary baseline (~$5,475 net/mo base + $125/mo bonus potential) minus expenses
+  const estimated2027Net = 5475;
+  const activeMonthlySurplus =
+    timelinePhase === 'current'
+      ? Math.max(cashSurplus, 0)
+      : Math.max(estimated2027Net - totalFixed - totalVariable, 800);
+
+  // 1. Identify Live Savings / HYSA Balance
+  const savingsAccounts = bankAccounts.filter(
+    (a) =>
+      a.subtype?.toLowerCase().includes('savings') ||
+      a.name?.toLowerCase().includes('savings') ||
+      a.name?.toLowerCase().includes('hysa'),
+  );
+  const liquidSavings =
+    savingsAccounts.length > 0
+      ? savingsAccounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0)
+      : totalBankAssets;
+
+  // 2. Identify 2018 Kia Sportage Auto Loan
+  const kiaDebt =
+    debts.find((d) => {
+      const name = (d.name || '').toLowerCase();
+      return (
+        name.includes('kia') ||
+        name.includes('sportage') ||
+        name.includes('auto') ||
+        name.includes('car')
+      );
+    }) || debts.find((d) => d.kind === 'debt') || null;
+
+  const kiaBalance = kiaDebt ? debtBalance(kiaDebt, entries) : 0;
+  const kiaOriginal = kiaDebt?.original || kiaDebt?.balance || (kiaBalance > 0 ? kiaBalance : 9000);
+  const kiaApr = kiaDebt?.apr || 12.5;
+  const isKiaPaidOff = kiaDebt ? kiaBalance <= 0 : false;
+  const hasKiaDebt = kiaDebt != null && kiaBalance > 0;
+
+  // Waterfall Phase Calculations & Locking Rules:
+  // Phase 1: Maryland Move-In Buffer ($3,000 Target)
+  const phase1Target = 3000;
+  const phase1Current = Math.min(liquidSavings, phase1Target);
+  const phase1Pct = Math.min((phase1Current / phase1Target) * 100, 100);
+  const isPhase1Complete = liquidSavings >= phase1Target;
+
+  // Phase 2: Employer 401(k) Match (Unlocks Jan 2027)
+  const isPhase2Unlocked = isPhase1Complete;
+  const isPhase2Active = isPhase2Unlocked && timelinePhase === 'future';
+  const isPhase2Complete = isPhase2Unlocked && matchCaptured;
+
+  // Phase 3: The 2018 Kia Sportage Payoff Strategy
+  const isPhase3Unlocked = isPhase1Complete;
+  const isPhase3Active = isPhase3Unlocked && hasKiaDebt;
+  const phase3Progress =
+    kiaOriginal > 0
+      ? Math.min(Math.max(((kiaOriginal - kiaBalance) / kiaOriginal) * 100, 0), 100)
+      : isKiaPaidOff
+      ? 100
+      : 0;
+
+  // Phase 4: Emergency Fund (3-Month Baseline Runway ~$10,000)
+  // Unlocks once auto loan balance drops to $0
+  const isPhase4Unlocked = isPhase1Complete && (isKiaPaidOff || !hasKiaDebt);
+  const emergencyTarget = 10000;
+  const emergencySavings = Math.max(0, Math.min(liquidSavings - phase1Target, emergencyTarget));
+  const emergencyPct = Math.min((emergencySavings / emergencyTarget) * 100, 100);
+  const isPhase4Complete = isPhase4Unlocked && emergencySavings >= emergencyTarget;
+
+  // Phase 5: Tax-Advantaged Growth (Roth IRA + 30% Marginal Tax Shield)
+  // Unlocks once emergency fund is 100% full
+  const isPhase5Unlocked = isPhase4Complete;
+  const rothIraTarget = 7000;
+  const rothCurrent = Math.min(totalInvestmentAssets, rothIraTarget);
+  const rothPct = Math.min((rothCurrent / rothIraTarget) * 100, 100);
+
+  // Active Routing Destination Logic
+  let activeDestination = 'Phase 1: Maryland Move-In Buffer';
+  let routingAdvice = 'Route 100% of current variable hourly surplus here first.';
+  let activeBadgeColor = 'text-blue-400 bg-blue-500/10 border-blue-500/20';
+
+  if (isPhase1Complete) {
+    if (hasKiaDebt) {
+      activeDestination = 'Phase 3: 2018 Kia Sportage Payoff';
+      routingAdvice = 'Dedicated: $800/month from cash flow + bonuses.';
+      activeBadgeColor = 'text-amber-400 bg-amber-500/10 border-amber-500/20';
+    } else if (!isPhase4Complete) {
+      activeDestination = 'Phase 4: 3-Month Emergency Fund';
+      routingAdvice = 'Auto loan is $0! 100% of surplus redirects to HYSA runway.';
+      activeBadgeColor = 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20';
+    } else {
+      activeDestination = 'Phase 5: Tax-Advantaged Growth';
+      routingAdvice = 'Emergency runway full! Maxing Roth IRA & scaling 401(k) 30% tax shield.';
+      activeBadgeColor = 'text-purple-400 bg-purple-500/10 border-purple-500/20';
+    }
+  }
 
   return (
-    <div className="space-y-4">
-      {/* Total Net Worth Card */}
+    <div className="space-y-5">
+      {/* Timeline Phase Switcher */}
+      <div className="flex bg-white/10 backdrop-blur-xl p-1 rounded-2xl border border-white/10 shadow-inner">
+        <button
+          onClick={() => setTimelinePhase('current')}
+          className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold transition-all ${
+            timelinePhase === 'current'
+              ? 'bg-blue-600 text-white shadow-md'
+              : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          Current Phase (Now – Dec 2026)
+        </button>
+        <button
+          onClick={() => setTimelinePhase('future')}
+          className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold transition-all ${
+            timelinePhase === 'future'
+              ? 'bg-indigo-600 text-white shadow-md'
+              : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          Rockville Move (Jan 2027+)
+        </button>
+      </div>
+
+      {/* Surplus Distributor Engine Card */}
+      <div className="relative overflow-hidden p-5 rounded-3xl bg-gradient-to-br from-indigo-950/60 via-zinc-900/80 to-black/90 backdrop-blur-2xl border border-indigo-500/25 shadow-2xl space-y-4">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2.5 rounded-2xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+              <Sparkles size={20} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-300">
+                Surplus Distributor Engine
+              </p>
+              <h2 className="text-2xl font-extrabold text-white">
+                {formatMoney(activeMonthlySurplus)}
+                <span className="text-xs text-gray-400 font-normal"> / month surplus</span>
+              </h2>
+            </div>
+          </div>
+          <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${activeBadgeColor}`}>
+            Active Routing
+          </span>
+        </div>
+
+        {/* Timeline Context Note */}
+        <div className="p-3 bg-black/40 rounded-2xl border border-white/5 space-y-1">
+          <p className="text-xs font-semibold text-white flex items-center gap-1.5">
+            <Target size={13} className="text-indigo-400" />
+            <span>Currently Routing To: <strong>{activeDestination}</strong></span>
+          </p>
+          <p className="text-[11px] text-gray-400 leading-relaxed">
+            {timelinePhase === 'current'
+              ? 'Operating under Variable Hourly Client Income. Cash surplus is derived dynamically from live deposits minus expenses.'
+              : 'Operating under Rockville, MD Transition. Budgeted on $90,000 base salary (~$5,475/mo net) with up to $1,500 annual bonus.'}
+          </p>
+          <p className="text-[11px] text-emerald-400 font-medium pt-0.5">
+            {routingAdvice}
+          </p>
+        </div>
+      </div>
+
+      {/* The 5 Waterfall Priority Tiers */}
+      <div className="space-y-3.5">
+        <div className="flex items-center justify-between px-1">
+          <h3 className="text-xs uppercase tracking-wider font-semibold text-gray-400">
+            Surplus Priority Waterfall Tiers
+          </h3>
+          <span className="text-[10px] text-indigo-400 font-medium">Strict Sequential Locking</span>
+        </div>
+
+        {/* TIER 1: Maryland Move-In Buffer */}
+        <div
+          className={`p-5 rounded-3xl backdrop-blur-2xl border transition-all ${
+            isPhase1Complete
+              ? 'bg-emerald-950/20 border-emerald-500/25'
+              : 'bg-zinc-900/85 border-blue-500/30 shadow-lg shadow-blue-500/5'
+          }`}
+        >
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <div
+                className={`p-2.5 rounded-2xl ${
+                  isPhase1Complete
+                    ? 'bg-emerald-500/20 text-emerald-400'
+                    : 'bg-blue-500/20 text-blue-400'
+                }`}
+              >
+                {isPhase1Complete ? <CheckCircle2 size={22} /> : <Unlock size={22} />}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                    Phase 1 · Priority 1
+                  </span>
+                  {isPhase1Complete && (
+                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400">
+                      100% Funded
+                    </span>
+                  )}
+                </div>
+                <h4 className="text-base font-bold text-white mt-1">Maryland Move-In Buffer</h4>
+                <p className="text-xs text-gray-400">
+                  Apartment security deposits & MVA vehicle registration for Rockville, MD move.
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <span className="text-sm font-bold text-white">{formatMoney(phase1Current)}</span>
+              <p className="text-[10px] text-gray-500">Target: {formatMoney(phase1Target)}</p>
+            </div>
+          </div>
+
+          <div className="mt-3.5 space-y-1.5">
+            <div className="w-full bg-black/40 rounded-full h-2.5 overflow-hidden border border-white/5">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${phase1Pct}%` }}
+                transition={{ duration: 1, ease: 'easeOut' }}
+                className={`h-full rounded-full ${isPhase1Complete ? 'bg-emerald-400' : 'bg-blue-500'}`}
+              />
+            </div>
+            <div className="flex justify-between text-[11px] text-gray-400">
+              <span>{phase1Pct.toFixed(0)}% Funded in Linked HYSA</span>
+              <span>
+                {isPhase1Complete
+                  ? 'Ready for Jan 2027 Move'
+                  : `${formatMoney(phase1Target - phase1Current)} remaining`}
+              </span>
+            </div>
+          </div>
+
+          {!isPhase1Complete && (
+            <p className="mt-2.5 text-[11px] text-blue-300 bg-blue-500/10 p-2.5 rounded-xl border border-blue-500/20">
+              ⚡ <strong>Active Rule:</strong> Route 100% of current variable hourly client surplus here first. All downstream tiers remain locked until this buffer is full.
+            </p>
+          )}
+        </div>
+
+        {/* TIER 2: Employer 401(k) Match (Unlocks Jan 2027) */}
+        <div
+          className={`p-5 rounded-3xl backdrop-blur-2xl border transition-all ${
+            isPhase2Complete
+              ? 'bg-emerald-950/20 border-emerald-500/25'
+              : isPhase2Active
+              ? 'bg-zinc-900/85 border-indigo-500/30'
+              : 'bg-zinc-900/40 border-white/5 opacity-70'
+          }`}
+        >
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <div
+                className={`p-2.5 rounded-2xl ${
+                  isPhase2Complete
+                    ? 'bg-emerald-500/20 text-emerald-400'
+                    : isPhase2Active
+                    ? 'bg-indigo-500/20 text-indigo-400'
+                    : 'bg-white/5 text-gray-500'
+                }`}
+              >
+                {isPhase2Complete ? (
+                  <CheckCircle2 size={22} />
+                ) : isPhase2Active ? (
+                  <Unlock size={22} />
+                ) : (
+                  <Lock size={22} />
+                )}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                    Phase 2 · Jan 2027
+                  </span>
+                  <span
+                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                      isPhase2Complete
+                        ? 'bg-emerald-500/20 text-emerald-400'
+                        : isPhase2Active
+                        ? 'bg-indigo-500/20 text-indigo-300'
+                        : 'bg-white/5 text-gray-400'
+                    }`}
+                  >
+                    {isPhase2Complete
+                      ? '100% Match Captured'
+                      : isPhase2Active
+                      ? 'Unlocks Jan 2027'
+                      : 'Locked'}
+                  </span>
+                </div>
+                <h4 className="text-base font-bold text-white mt-1">Employer 401(k) Match Flag</h4>
+                <p className="text-xs text-gray-400">
+                  Ensure 100% of employer match is captured upon $90k salary transition.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <p className="mt-3 text-[11px] text-gray-400 leading-relaxed">
+            Employer match represents an <strong>immediate 100% guaranteed return</strong>. This tier enforces that match contributions are activated before cash flow is aggressively routed into debt payoff.
+          </p>
+
+          {isPhase2Unlocked && (
+            <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between">
+              <span className="text-xs font-medium text-gray-300">
+                Status: {matchCaptured ? '100% Match Active' : 'Pending Salary Transition'}
+              </span>
+              <button
+                onClick={() => setMatchCaptured(!matchCaptured)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                  matchCaptured
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                    : 'bg-white/10 hover:bg-white/20 text-white'
+                }`}
+              >
+                {matchCaptured ? '✓ Match Confirmed' : 'Mark 100% Match Captured'}
+              </button>
+            </div>
+          )}
+
+          {!isPhase2Unlocked && (
+            <p className="mt-2 text-[10px] text-gray-500 flex items-center gap-1">
+              <Lock size={12} /> Locked until Phase 1 Maryland Buffer reaches $3,000.
+            </p>
+          )}
+        </div>
+
+        {/* TIER 3: The 2018 Kia Sportage Payoff Strategy (~12.5% APR) */}
+        <div
+          className={`p-5 rounded-3xl backdrop-blur-2xl border transition-all ${
+            isKiaPaidOff
+              ? 'bg-emerald-950/20 border-emerald-500/25'
+              : isPhase3Active
+              ? 'bg-zinc-900/85 border-amber-500/30 shadow-lg shadow-amber-500/5'
+              : 'bg-zinc-900/40 border-white/5 opacity-70'
+          }`}
+        >
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <div
+                className={`p-2.5 rounded-2xl ${
+                  isKiaPaidOff
+                    ? 'bg-emerald-500/20 text-emerald-400'
+                    : isPhase3Active
+                    ? 'bg-amber-500/20 text-amber-400'
+                    : 'bg-white/5 text-gray-500'
+                }`}
+              >
+                {isKiaPaidOff ? (
+                  <CheckCircle2 size={22} />
+                ) : isPhase3Active ? (
+                  <Unlock size={22} />
+                ) : (
+                  <Lock size={22} />
+                )}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    Phase 3 · Debt Acceleration
+                  </span>
+                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30">
+                    ~{kiaApr}% APR
+                  </span>
+                </div>
+                <h4 className="text-base font-bold text-white mt-1">2018 Kia Sportage Payoff</h4>
+                <p className="text-xs text-gray-400">
+                  Target: Dedicated $800/mo cash flow + all lump-sum bonuses.
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <span className="text-sm font-bold text-white">
+                {isKiaPaidOff ? '$0 Balance' : formatMoney(kiaBalance)}
+              </span>
+              <p className="text-[10px] text-gray-500">Live Auto Loan</p>
+            </div>
+          </div>
+
+          {/* Progress Bar */}
+          <div className="mt-3.5 space-y-1.5">
+            <div className="w-full bg-black/40 rounded-full h-2.5 overflow-hidden border border-white/5">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${phase3Progress}%` }}
+                transition={{ duration: 1, ease: 'easeOut' }}
+                className={`h-full rounded-full ${isKiaPaidOff ? 'bg-emerald-400' : 'bg-amber-400'}`}
+              />
+            </div>
+            <div className="flex justify-between text-[11px] text-gray-400">
+              <span>{phase3Progress.toFixed(0)}% Principal Paid Off</span>
+              <span>
+                {isKiaPaidOff
+                  ? 'Paid in Full ✓'
+                  : `${formatMoney(kiaBalance)} remaining`}
+              </span>
+            </div>
+          </div>
+
+          {/* Mandatory Strategy Notes & Persistent Tooltip */}
+          <div className="mt-3 space-y-2">
+            {/* Tooltip: Principal-Only Payments */}
+            <div className="p-3 bg-amber-500/10 rounded-2xl border border-amber-500/20 flex items-start gap-2 text-xs text-amber-200">
+              <Info size={16} className="text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <strong className="block font-semibold">Payment Instruction:</strong>
+                Always mark extra payments as <strong>&apos;Principal-Only&apos;</strong> with your auto lender. This bypasses future interest accrual and immediately crushes the 12.5% balance.
+              </div>
+            </div>
+
+            {/* Strategic Note: Hold and pay off — do not lease */}
+            <div className="flex items-center justify-between p-2.5 bg-black/40 rounded-xl border border-white/5 text-xs text-gray-300">
+              <span className="flex items-center gap-1.5 font-medium text-emerald-400">
+                <ShieldCheck size={14} /> Strategic Rule:
+              </span>
+              <span className="font-bold text-white tracking-wide">
+                &ldquo;Hold and pay off — do not lease&rdquo;
+              </span>
+            </div>
+          </div>
+
+          {!isPhase3Unlocked && (
+            <p className="mt-2 text-[10px] text-gray-500 flex items-center gap-1">
+              <Lock size={12} /> Locked until Phase 1 Maryland Buffer reaches $3,000.
+            </p>
+          )}
+        </div>
+
+        {/* TIER 4: Emergency Fund ($10,000 Runway in HYSA) */}
+        <div
+          className={`p-5 rounded-3xl backdrop-blur-2xl border transition-all ${
+            isPhase4Complete
+              ? 'bg-emerald-950/20 border-emerald-500/25'
+              : isPhase4Unlocked
+              ? 'bg-zinc-900/85 border-blue-500/30'
+              : 'bg-zinc-900/40 border-white/5 opacity-70'
+          }`}
+        >
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <div
+                className={`p-2.5 rounded-2xl ${
+                  isPhase4Complete
+                    ? 'bg-emerald-500/20 text-emerald-400'
+                    : isPhase4Unlocked
+                    ? 'bg-blue-500/20 text-blue-400'
+                    : 'bg-white/5 text-gray-500'
+                }`}
+              >
+                {isPhase4Complete ? (
+                  <CheckCircle2 size={22} />
+                ) : isPhase4Unlocked ? (
+                  <Unlock size={22} />
+                ) : (
+                  <Lock size={22} />
+                )}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                    Phase 4 · Stability
+                  </span>
+                  {isPhase4Complete && (
+                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400">
+                      Fully Funded
+                    </span>
+                  )}
+                </div>
+                <h4 className="text-base font-bold text-white mt-1">3-Month Emergency Fund</h4>
+                <p className="text-xs text-gray-400">
+                  Target: ~$10,000 baseline liquid runway in linked HYSA.
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <span className="text-sm font-bold text-white">{formatMoney(emergencySavings)}</span>
+              <p className="text-[10px] text-gray-500">Target: {formatMoney(emergencyTarget)}</p>
+            </div>
+          </div>
+
+          <div className="mt-3.5 space-y-1.5">
+            <div className="w-full bg-black/40 rounded-full h-2.5 overflow-hidden border border-white/5">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${emergencyPct}%` }}
+                transition={{ duration: 1, ease: 'easeOut' }}
+                className={`h-full rounded-full ${isPhase4Complete ? 'bg-emerald-400' : 'bg-blue-400'}`}
+              />
+            </div>
+            <div className="flex justify-between text-[11px] text-gray-400">
+              <span>{emergencyPct.toFixed(0)}% Funded Runway</span>
+              <span>
+                {isPhase4Complete
+                  ? '3-Month Reserve Secure'
+                  : `${formatMoney(emergencyTarget - emergencySavings)} remaining`}
+              </span>
+            </div>
+          </div>
+
+          <p className="mt-2.5 text-[11px] text-gray-400 leading-relaxed">
+            {isPhase4Unlocked
+              ? '⚡ Auto loan balance is $0! 100% of your monthly cash flow surplus is now redirected here to establish your core emergency buffer.'
+              : '🔒 Locked: Will automatically unlock and redirect monthly surplus once the 2018 Kia Sportage loan reaches $0.'}
+          </p>
+        </div>
+
+        {/* TIER 5: Tax-Advantaged Growth (Roth IRA + 30% Marginal Tax Shield) */}
+        <div
+          className={`p-5 rounded-3xl backdrop-blur-2xl border transition-all ${
+            isPhase5Unlocked
+              ? 'bg-zinc-900/85 border-purple-500/30'
+              : 'bg-zinc-900/40 border-white/5 opacity-70'
+          }`}
+        >
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <div
+                className={`p-2.5 rounded-2xl ${
+                  isPhase5Unlocked
+                    ? 'bg-purple-500/20 text-purple-400'
+                    : 'bg-white/5 text-gray-500'
+                }`}
+              >
+                {isPhase5Unlocked ? <Unlock size={22} /> : <Lock size={22} />}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                    Phase 5 · Wealth Maximizer
+                  </span>
+                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400">
+                    ~30% Tax Shield
+                  </span>
+                </div>
+                <h4 className="text-base font-bold text-white mt-1">Tax-Advantaged Growth</h4>
+                <p className="text-xs text-gray-400">
+                  Max Roth IRA ($7k) + scale Traditional 401(k) to shield Rockville, MD taxes.
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <span className="text-sm font-bold text-emerald-400">{formatMoney(rothCurrent)}</span>
+              <p className="text-[10px] text-gray-500">Portfolio</p>
+            </div>
+          </div>
+
+          {/* Tax Shield Breakdown */}
+          <div className="mt-3.5 p-3 bg-black/40 rounded-2xl border border-white/5 space-y-2">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-gray-400">Federal Marginal Tax Rate:</span>
+              <span className="font-semibold text-white">22.0%</span>
+            </div>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-gray-400">Maryland State Tax Rate:</span>
+              <span className="font-semibold text-white">4.75%</span>
+            </div>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-gray-400">Montgomery County (Rockville) Tax:</span>
+              <span className="font-semibold text-white">3.20%</span>
+            </div>
+            <div className="h-px bg-white/10" />
+            <div className="flex justify-between items-center text-xs font-bold">
+              <span className="text-purple-300">Combined Marginal Tax Bracket:</span>
+              <span className="text-emerald-400 text-sm">~29.95% (~30%)</span>
+            </div>
+          </div>
+
+          <p className="mt-2.5 text-[11px] text-gray-400 leading-relaxed">
+            Every $1,000 contributed to your Traditional 401(k) shields approximately <strong>$300 from immediate taxes</strong>. Max out your Roth IRA first for tax-free retirement compounding, then scale 401(k) contributions to lower taxable income.
+          </p>
+
+          {!isPhase5Unlocked && (
+            <p className="mt-2 text-[10px] text-gray-500 flex items-center gap-1">
+              <Lock size={12} /> Locked until 3-month emergency fund is fully funded ($10,000).
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Live Net Worth & Account Summaries */}
       <GlassCard
-        title="Total Net Worth"
+        title="Live Net Worth"
         icon={<PiggyBank className="text-green-400" />}
         amount={formatMoney(netWorth)}
       >
         <p className="text-xs text-gray-400 mb-3">
-          Live net worth calculated strictly from your connected bank accounts, Robinhood, and debts.
+          Calculated dynamically from your live linked checking, savings, brokerage, and auto loans.
         </p>
 
         <div className="grid grid-cols-3 gap-2">
@@ -1035,15 +1641,6 @@ function WealthTab({ debts, entries, linkedAccounts = [], onOpenLink }) {
             })}
           </div>
         </GlassCard>
-      )}
-
-      {!hasAnyAccounts && !hasAnyDebts && (
-        <div className="p-6 rounded-[28px] bg-white/5 border border-white/10 text-center space-y-2">
-          <p className="text-sm font-semibold text-white">Ready for Your Real Financial Data</p>
-          <p className="text-xs text-gray-400 leading-relaxed max-w-sm mx-auto">
-            Connect your bank and Robinhood accounts above, or tap the microphone to dictate your real income and expenses. All placeholder numbers have been cleared.
-          </p>
-        </div>
       )}
     </div>
   );
