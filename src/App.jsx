@@ -28,6 +28,8 @@ import {
   Edit2,
   Check,
   X,
+  ShieldAlert,
+  Clock,
 } from 'lucide-react';
 import {
   useFinanceData,
@@ -38,6 +40,7 @@ import {
   getStoredAccounts,
   saveStoredAccounts,
   categorizeAccounts,
+  getCategoryStyle,
 } from './lib/store.js';
 import { generateOptimizationInsights } from './lib/optimization.js';
 import AddEntrySheet from './components/AddEntrySheet.jsx';
@@ -268,24 +271,34 @@ export default function PersonalFinanceTracker() {
 
         {/* Tab Navigation (iOS Segmented Control Style) */}
         <div className="flex bg-white/10 backdrop-blur-xl p-1 rounded-2xl border border-white/10 shadow-inner overflow-x-auto no-scrollbar">
-          {['dashboard', 'optimize', 'subscriptions', 'debt', 'wealth'].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className="relative flex-1 py-2 px-3 text-xs sm:text-sm font-medium capitalize z-10 whitespace-nowrap"
-            >
-              {activeTab === tab && (
-                <motion.div
-                  layoutId="active-tab"
-                  className="absolute inset-0 bg-white/20 rounded-xl shadow-sm"
-                  transition={springAnim}
-                />
-              )}
-              <span className={`relative z-20 ${activeTab === tab ? 'text-white' : 'text-gray-400'}`}>
-                {tab === 'optimize' ? 'Optimize' : tab === 'wealth' ? 'Invest & Save' : tab}
-              </span>
-            </button>
-          ))}
+          {[
+            { id: 'dashboard', label: 'Dashboard' },
+            { id: 'optimize', label: 'Optimize' },
+            { id: 'subscriptions_debt', label: 'Subscriptions & Debt' },
+            { id: 'wealth', label: 'Invest & Save' },
+          ].map((t) => {
+            const isTabActive =
+              activeTab === t.id ||
+              (t.id === 'subscriptions_debt' && (activeTab === 'subscriptions' || activeTab === 'debt'));
+            return (
+              <button
+                key={t.id}
+                onClick={() => setActiveTab(t.id)}
+                className="relative flex-1 py-2 px-2.5 text-xs sm:text-sm font-medium capitalize z-10 whitespace-nowrap text-center"
+              >
+                {isTabActive && (
+                  <motion.div
+                    layoutId="active-tab"
+                    className="absolute inset-0 bg-white/20 rounded-xl shadow-sm"
+                    transition={springAnim}
+                  />
+                )}
+                <span className={`relative z-20 ${isTabActive ? 'text-white' : 'text-gray-400'}`}>
+                  {t.label}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         {/* Dynamic Content Area */}
@@ -329,20 +342,16 @@ export default function PersonalFinanceTracker() {
                 onNavigateTab={setActiveTab}
               />
             )}
-            {activeTab === 'subscriptions' && (
-              <SubscriptionsTab
+            {(activeTab === 'subscriptions_debt' || activeTab === 'subscriptions' || activeTab === 'debt') && (
+              <SubscriptionsAndDebtTab
                 fixedExpenses={fixedExpenses}
                 totalFixed={totalFixed}
-                onDelete={removeEntry}
-                onAdd={() => openAdd(false)}
-              />
-            )}
-            {activeTab === 'debt' && (
-              <DebtTab
                 debts={debts}
                 entries={entries}
+                linkedAccounts={linkedAccounts}
                 onDelete={removeEntry}
                 onAdd={() => openAdd(false)}
+                onAddEntry={addEntry}
               />
             )}
             {activeTab === 'wealth' && (
@@ -623,13 +632,14 @@ function DashboardTab({
             allCategories.map((cat) => {
               const spent = categoryTotals[cat] || 0;
               const max = budgets[cat] || spent || 100;
+              const catStyle = getCategoryStyle(cat);
               return (
                 <ProgressBar
                   key={cat}
                   label={formatCategory(cat)}
                   current={spent}
                   max={max}
-                  color="bg-blue-400"
+                  color={catStyle.bar}
                 />
               );
             })
@@ -673,55 +683,53 @@ function DashboardTab({
           <p className="text-sm text-gray-500">No transactions recorded yet.</p>
         ) : (
           <div className="space-y-2 mt-2">
-            {recentTransactions.map((item) => (
-              <div
-                key={item.id}
-                className="group flex items-center justify-between p-3 bg-black/30 rounded-xl border border-white/5 hover:border-white/10 transition-colors"
-              >
-                <div className="flex-1 min-w-0 pr-3">
+            {recentTransactions.map((item) => {
+              const isIncome = item.kind === 'income';
+              const catStyle = getCategoryStyle(item.category || item.kind, item.kind);
+              return (
+                <div
+                  key={item.id}
+                  className="group flex items-center justify-between p-3 bg-black/30 rounded-xl border border-white/5 hover:border-white/10 transition-colors"
+                >
+                  <div className="flex-1 min-w-0 pr-3">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-md border ${catStyle.bg} ${catStyle.text} ${catStyle.border}`}
+                      >
+                        {item.kind === 'payment' ? 'Debt Pay' : formatCategory(item.category || item.kind)}
+                      </span>
+                      {item.pending && (
+                        <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          Pending
+                        </span>
+                      )}
+                      <p className="text-sm font-medium text-gray-200 truncate">{item.name}</p>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
+                      <Calendar size={11} />
+                      {item.date || 'Recent'}
+                    </p>
+                  </div>
                   <div className="flex items-center gap-2">
                     <span
-                      className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-md ${
-                        item.kind === 'income'
-                          ? 'bg-green-500/20 text-green-400'
-                          : item.kind === 'payment'
-                          ? 'bg-red-500/20 text-red-400'
-                          : 'bg-blue-500/20 text-blue-300'
+                      className={`text-sm font-semibold ${
+                        isIncome ? 'text-green-400' : 'text-white'
                       }`}
                     >
-                      {item.kind === 'payment' ? 'Debt Pay' : formatCategory(item.category || item.kind)}
+                      {isIncome ? '+' : '-'}
+                      {formatMoney(item.amount)}
                     </span>
-                    {item.pending && (
-                      <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                        Pending
-                      </span>
-                    )}
-                    <p className="text-sm font-medium text-gray-200 truncate">{item.name}</p>
+                    <button
+                      onClick={() => onDelete(item.id)}
+                      aria-label={`Delete ${item.name}`}
+                      className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-white/5 transition-colors"
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   </div>
-                  <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
-                    <Calendar size={11} />
-                    {item.date || 'Recent'}
-                  </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`text-sm font-semibold ${
-                      item.kind === 'income' ? 'text-green-400' : 'text-white'
-                    }`}
-                  >
-                    {item.kind === 'income' ? '+' : '-'}
-                    {formatMoney(item.amount)}
-                  </span>
-                  <button
-                    onClick={() => onDelete(item.id)}
-                    aria-label={`Delete ${item.name}`}
-                    className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-white/5 transition-colors"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </GlassCard>
@@ -729,184 +737,590 @@ function DashboardTab({
   );
 }
 
-function SubscriptionsTab({ fixedExpenses, totalFixed, onDelete, onAdd }) {
+function SubscriptionsAndDebtTab({
+  fixedExpenses = [],
+  totalFixed = 0,
+  debts = [],
+  entries = [],
+  linkedAccounts = [],
+  onDelete,
+  onAdd,
+  onAddEntry,
+}) {
+  const [activeFilter, setActiveFilter] = useState('all'); // 'all' | 'subscriptions' | 'debts'
+  const [promotedIds, setPromotedIds] = useState(new Set());
+
+  const { creditAccounts, totalCreditBalance } = categorizeAccounts(linkedAccounts);
+
+  // 1. Auto-detected Subscriptions from live bank / card activity
+  const autoDetectedSubscriptions = useMemo(() => {
+    const keywords = [
+      'RECURRING',
+      'SUBSCRIPTION',
+      'MONTHLY',
+      'AUTOPAY',
+      'NETFLIX',
+      'SPOTIFY',
+      'APPLE',
+      'GOOGLE',
+      'AMAZON PRIME',
+      'CHATGPT',
+      'OPENAI',
+      'GYM',
+      'PLANET FITNESS',
+      'STORAGE',
+      'INTERNET',
+      'VERIZON',
+      'AT&T',
+      'T-MOBILE',
+      'COMCAST',
+      'XFINITY',
+      'GEICO',
+      'PROGRESSIVE',
+      'STATE FARM',
+      'PATREON',
+      'DISNEY',
+      'HBO',
+      'MAX',
+      'YOUTUBE',
+      'ICLOUD',
+      'MEMBERSHIP',
+      'FEE',
+    ];
+
+    const seen = new Set();
+    const list = [];
+
+    for (const e of entries) {
+      if (e.kind === 'income' || e.kind === 'debt' || e.kind === 'payment' || e.frequency === 'monthly') continue;
+      const name = (e.name || '').toUpperCase();
+      const cat = (e.category || '').toUpperCase();
+
+      const isSub =
+        keywords.some((kw) => name.includes(kw)) ||
+        cat.includes('SERVICE') ||
+        (cat.includes('ENTERTAINMENT') && e.amount < 45);
+
+      const alreadyTracked = fixedExpenses.some(
+        (fe) => fe.name?.toLowerCase() === e.name?.toLowerCase(),
+      );
+
+      if (isSub && !alreadyTracked) {
+        const key = name.slice(0, 16);
+        if (!seen.has(key)) {
+          seen.add(key);
+          list.push(e);
+        }
+      }
+    }
+    return list;
+  }, [entries, fixedExpenses]);
+
+  // 2. Auto-detected Debt Payments from live activity
+  const autoDetectedDebtPayments = useMemo(() => {
+    return entries.filter((e) => {
+      if (e.kind === 'payment') return true;
+      const name = (e.name || '').toUpperCase();
+      const cat = (e.category || '').toUpperCase();
+      return (
+        cat.includes('LOAN_PAYMENTS') ||
+        cat.includes('LOAN') ||
+        name.includes('LOAN') ||
+        name.includes('AUTO LOAN') ||
+        name.includes('KIA') ||
+        name.includes('SPORTAGE') ||
+        name.includes('CAR PAYMENT') ||
+        name.includes('FINANCING')
+      );
+    });
+  }, [entries]);
+
+  const autoLoanTotal = autoDetectedDebtPayments.reduce((sum, e) => sum + e.amount, 0);
+
+  // Total commitments
+  const monthlyDebtTotal = debts.reduce(
+    (sum, d) => sum + (d.minPayment || 0) + (d.extraPayment || 0),
+    0,
+  );
+  const totalMonthlyCommitments = totalFixed + monthlyDebtTotal;
+
+  const handlePromoteSubscription = (item) => {
+    if (onAddEntry) {
+      onAddEntry({
+        name: item.name,
+        amount: item.amount,
+        kind: 'expense',
+        frequency: 'monthly',
+        category: item.category || 'Subscriptions',
+        note: 'Auto-promoted from activity',
+      });
+      setPromotedIds((prev) => new Set([...prev, item.id]));
+    }
+  };
+
+  const handlePromoteDebt = (item) => {
+    if (onAddEntry) {
+      onAddEntry({
+        name: item.name,
+        balance: item.amount,
+        original: item.amount,
+        minPayment: Math.round(item.amount * 0.05) || 50,
+        apr: 12.5,
+        kind: 'debt',
+      });
+      setPromotedIds((prev) => new Set([...prev, item.id]));
+    }
+  };
+
+  const showSubs = activeFilter === 'all' || activeFilter === 'subscriptions';
+  const showDebts = activeFilter === 'all' || activeFilter === 'debts';
+
   return (
     <div className="space-y-5">
-      <GlassCard
-        title="Fixed Overhead"
-        icon={<Repeat className="text-orange-400" />}
-        amount={formatMoney(totalFixed)}
-      >
-        <div className="space-y-3 mt-4">
-          {fixedExpenses.length === 0 ? (
-            <p className="text-sm text-gray-500">No monthly recurring expenses added yet.</p>
-          ) : (
-            fixedExpenses.map((sub) => (
-              <div
-                key={sub.id}
-                className="group flex justify-between items-center p-3 bg-black/20 rounded-xl border border-white/5 hover:border-white/10 transition-colors"
-              >
-                <div>
-                  <p className="text-sm font-medium text-gray-200">{sub.name}</p>
-                  <p className="text-xs text-gray-500">{sub.note || 'Monthly recurring'}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold text-white">{formatMoney(sub.amount)}</p>
-                  <button
-                    onClick={() => onDelete(sub.id)}
-                    aria-label={`Delete ${sub.name}`}
-                    className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-white/5 transition-colors"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
+      {/* Overview Commitments Card */}
+      <div className="relative overflow-hidden p-5 rounded-3xl bg-gradient-to-br from-zinc-900 via-neutral-900 to-black backdrop-blur-2xl border border-white/15 shadow-2xl space-y-4">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-2xl bg-orange-500/20 text-orange-400 border border-orange-500/30">
+              <Repeat size={22} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-orange-300">
+                Monthly Fixed Commitments
+              </p>
+              <h2 className="text-2xl font-extrabold text-white">
+                {formatMoney(totalMonthlyCommitments)}
+                <span className="text-xs text-gray-400 font-normal"> / month required</span>
+              </h2>
+            </div>
+          </div>
+          <button
+            onClick={onAdd}
+            className="text-[11px] font-semibold text-white px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 flex items-center gap-1 transition-all"
+          >
+            <Plus size={13} /> Add Item
+          </button>
         </div>
 
-        <button
-          onClick={onAdd}
-          className="mt-4 w-full py-2.5 rounded-xl border border-dashed border-white/15 text-xs font-medium text-gray-400 hover:text-white hover:border-white/30 flex items-center justify-center gap-1.5 transition-colors"
-        >
-          <Plus size={14} /> Add Recurring Subscription or Bill
-        </button>
-      </GlassCard>
-    </div>
-  );
-}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+          <div className="p-2.5 bg-black/40 rounded-xl border border-white/5">
+            <span className="text-gray-400 block text-[10px]">Subscriptions & Bills</span>
+            <span className="font-bold text-white">{formatMoney(totalFixed)}</span>
+          </div>
+          <div className="p-2.5 bg-black/40 rounded-xl border border-white/5">
+            <span className="text-gray-400 block text-[10px]">Debt Payments</span>
+            <span className="font-bold text-rose-300">{formatMoney(monthlyDebtTotal)}</span>
+          </div>
+          <div className="p-2.5 bg-black/40 rounded-xl border border-white/5 col-span-2 sm:col-span-1">
+            <span className="text-gray-400 block text-[10px]">Card Balance Owed</span>
+            <span className="font-bold text-amber-300">{formatMoney(totalCreditBalance)}</span>
+          </div>
+        </div>
+      </div>
 
-function DebtTab({ debts, entries, onDelete, onAdd }) {
-  if (debts.length === 0) {
-    return (
-      <GlassCard title="Debts & Loans" icon={<Car className="text-red-400" />} amount="$0">
-        <p className="text-sm text-gray-400 py-4 text-center">
-          No debts or loans tracked. Tap below or dictate “I owe 5,000 on my credit card”.
-        </p>
-        <button
-          onClick={onAdd}
-          className="w-full py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-medium text-sm flex items-center justify-center gap-2 transition-colors"
-        >
-          <Plus size={16} /> Add a Debt
-        </button>
-      </GlassCard>
-    );
-  }
-
-  return (
-    <div className="space-y-5">
-      {debts.map((debt) => {
-        const remaining = debtBalance(debt, entries);
-        const original = debt.original || debt.balance || remaining;
-        const paidSoFar = Math.max(original - remaining, 0);
-        const monthlyTotal = (debt.minPayment || 0) + (debt.extraPayment || 0);
-        const months = monthsToPayoff(remaining, monthlyTotal, debt.apr);
-
-        const payments = entries.filter((e) => e.kind === 'payment' && e.debtId === debt.id);
-
-        return (
-          <GlassCard
-            key={debt.id}
-            title={debt.name}
-            icon={<Car className="text-red-400" />}
-            amount={`${formatMoney(remaining)} Left`}
+      {/* Segmented Filter Pills */}
+      <div className="flex bg-white/5 p-1 rounded-2xl border border-white/10 text-xs">
+        {[
+          { id: 'all', label: 'All Commitments' },
+          { id: 'subscriptions', label: `Subscriptions (${fixedExpenses.length + autoDetectedSubscriptions.length})` },
+          { id: 'debts', label: `Debts & Loans (${debts.length + (totalCreditBalance > 0 ? 1 : 0)})` },
+        ].map((f) => (
+          <button
+            key={f.id}
+            onClick={() => setActiveFilter(f.id)}
+            className={`flex-1 py-1.5 px-2 rounded-xl font-medium transition-all ${
+              activeFilter === f.id
+                ? 'bg-white/20 text-white font-semibold shadow-sm'
+                : 'text-gray-400 hover:text-white'
+            }`}
           >
-            <div className="space-y-5 mt-2">
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-gray-400">Target Payoff Date</span>
-                <span className="font-medium text-white">
-                  {months === null
-                    ? 'Payment too low for APR'
-                    : months === 0
-                    ? 'Paid off!'
-                    : `${months} Month${months === 1 ? '' : 's'}`}
-                </span>
-              </div>
+            {f.label}
+          </button>
+        ))}
+      </div>
 
-              <ProgressBar
-                label="Principal Progress"
-                current={paidSoFar}
-                max={original}
-                color="bg-red-400"
-              />
-
-              <div className="p-4 bg-black/30 rounded-xl border border-white/5 flex flex-col space-y-3">
-                <div className="flex justify-between items-center">
-                  <p className="text-sm text-gray-400">Scheduled Minimum</p>
-                  <p className="font-medium text-white">{formatMoney(debt.minPayment || 0, { cents: 'always' })}</p>
-                </div>
-                <div className="flex justify-between items-center">
-                  <p className="text-sm text-gray-400">Principal-Only Extra</p>
-                  <p className="font-medium text-green-400">
-                    +{formatMoney(debt.extraPayment || 0, { cents: 'always' })}
-                  </p>
-                </div>
-                {debt.apr && (
-                  <div className="flex justify-between items-center text-xs text-gray-500">
-                    <p>Annual Interest (APR)</p>
-                    <p>{debt.apr}%</p>
-                  </div>
-                )}
-                <div className="h-px w-full bg-white/10" />
-                <div className="flex justify-between items-center">
-                  <p className="text-sm font-semibold text-gray-200">Total Monthly Allocation</p>
-                  <p className="text-lg font-bold text-white">
-                    {formatMoney(monthlyTotal, { cents: 'always' })}
-                  </p>
-                </div>
-              </div>
-
-              {/* Payments logged */}
-              {payments.length > 0 && (
-                <div className="space-y-2 pt-2 border-t border-white/5">
-                  <p className="text-xs uppercase font-medium text-gray-500">Logged Payments</p>
-                  {payments.slice(0, 4).map((p) => (
+      {/* ---------------------------------------------------- */}
+      {/* 1. SUBSCRIPTIONS & RECURRING BILLS SECTION */}
+      {/* ---------------------------------------------------- */}
+      {showSubs && (
+        <div className="space-y-4">
+          <GlassCard
+            title="Tracked Subscriptions & Bills"
+            icon={<Repeat className="text-orange-400" />}
+            amount={formatMoney(totalFixed)}
+          >
+            <div className="space-y-2.5 mt-2">
+              {fixedExpenses.length === 0 ? (
+                <p className="text-xs text-gray-500 py-2">
+                  No monthly subscriptions tracked yet. Tap below or review auto-detected charges.
+                </p>
+              ) : (
+                fixedExpenses.map((sub) => {
+                  const catStyle = getCategoryStyle(sub.category || 'Subscriptions');
+                  return (
                     <div
-                      key={p.id}
-                      className="flex justify-between items-center text-xs p-2 bg-black/20 rounded-lg"
+                      key={sub.id}
+                      className="group flex justify-between items-center p-3 bg-black/30 rounded-2xl border border-white/5 hover:border-white/10 transition-colors"
                     >
-                      <span className="text-gray-400">{p.date || 'Recent payment'}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-green-400 font-semibold">-{formatMoney(p.amount)}</span>
-                        <button
-                          onClick={() => onDelete(p.id)}
-                          aria-label="Remove payment"
-                          className="text-gray-500 hover:text-red-400"
+                      <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                        <span
+                          className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-md border shrink-0 ${catStyle.bg} ${catStyle.text} ${catStyle.border}`}
                         >
-                          <Trash2 size={12} />
+                          {formatCategory(sub.category || 'Subscription')}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-white truncate">{sub.name}</p>
+                          <p className="text-[10px] text-gray-500">{sub.note || 'Monthly recurring'}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <p className="text-xs font-bold text-white">{formatMoney(sub.amount)}</p>
+                        <button
+                          onClick={() => onDelete(sub.id)}
+                          aria-label={`Delete ${sub.name}`}
+                          className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-white/5 transition-colors"
+                        >
+                          <Trash2 size={13} />
                         </button>
                       </div>
                     </div>
-                  ))}
-                </div>
+                  );
+                })
               )}
+            </div>
 
-              <div className="flex gap-2 pt-1">
-                <button
-                  onClick={onAdd}
-                  className="flex-1 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-semibold flex items-center justify-center gap-1 transition-colors"
-                >
-                  <Plus size={14} /> Log Payment
-                </button>
-                <button
-                  onClick={() => onDelete(debt.id)}
-                  aria-label={`Delete ${debt.name}`}
-                  className="px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-semibold transition-colors"
-                >
-                  <Trash2 size={14} />
-                </button>
+            <button
+              onClick={onAdd}
+              className="mt-3 w-full py-2.5 rounded-xl border border-dashed border-white/15 text-xs font-medium text-gray-400 hover:text-white hover:border-white/30 flex items-center justify-center gap-1.5 transition-colors"
+            >
+              <Plus size={14} /> Add Recurring Subscription
+            </button>
+          </GlassCard>
+
+          {/* Auto-detected Subscriptions from Live Bank Activity */}
+          {autoDetectedSubscriptions.length > 0 && (
+            <div className="p-4 rounded-3xl bg-zinc-900/85 backdrop-blur-2xl border border-violet-500/25 shadow-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-xl bg-violet-500/20 text-violet-400">
+                    <Sparkles size={16} />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-white">
+                      Auto-Detected Recurring Activity
+                    </h3>
+                    <p className="text-[10px] text-gray-400">
+                      Identified from your live bank & card statements
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30">
+                  {autoDetectedSubscriptions.length} Found
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                {autoDetectedSubscriptions.map((item) => {
+                  const isPromoted = promotedIds.has(item.id);
+                  const catStyle = getCategoryStyle(item.category);
+                  return (
+                    <div
+                      key={item.id}
+                      className="p-2.5 rounded-2xl bg-black/40 border border-white/5 flex items-center justify-between gap-2 text-xs"
+                    >
+                      <div className="min-w-0 flex items-center gap-2">
+                        <span
+                          className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 ${catStyle.bg} ${catStyle.text} ${catStyle.border}`}
+                        >
+                          {formatCategory(item.category || 'Recurring')}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-white truncate">{item.name}</p>
+                          <p className="text-[10px] text-gray-500">{item.date || 'Recent'}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="font-bold text-white">{formatMoney(item.amount)}</span>
+                        <button
+                          onClick={() => handlePromoteSubscription(item)}
+                          disabled={isPromoted}
+                          className={`px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all ${
+                            isPromoted
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              : 'bg-violet-500/20 hover:bg-violet-500/30 text-violet-200 border border-violet-500/30 active:scale-95'
+                          }`}
+                        >
+                          {isPromoted ? (
+                            <>
+                              <CheckCircle2 size={11} /> Tracked
+                            </>
+                          ) : (
+                            <>
+                              <Plus size={11} /> Track Monthly
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-          </GlassCard>
-        );
-      })}
+          )}
+        </div>
+      )}
 
-      <button
-        onClick={onAdd}
-        className="w-full py-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-dashed border-white/15 text-sm font-medium text-gray-300 flex items-center justify-center gap-2 transition-colors"
-      >
-        <Plus size={16} /> Add Another Debt / Loan
-      </button>
+      {/* ---------------------------------------------------- */}
+      {/* 2. DEBTS & LOANS SECTION */}
+      {/* ---------------------------------------------------- */}
+      {showDebts && (
+        <div className="space-y-4">
+          {/* Active Connected Credit Cards (Liability) */}
+          {totalCreditBalance > 0 && (
+            <div className="p-4 rounded-3xl bg-zinc-900/85 backdrop-blur-2xl border border-amber-500/25 shadow-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-xl bg-amber-500/20 text-amber-400">
+                    <CreditCard size={16} />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-white">Credit Card Balance Owed</h3>
+                    <p className="text-[10px] text-gray-400">Unpaid short-term liability</p>
+                  </div>
+                </div>
+                <span className="text-xs font-extrabold text-amber-300">
+                  {formatMoney(totalCreditBalance)}
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                {creditAccounts.map((acc) => (
+                  <div
+                    key={acc.id}
+                    className="p-2.5 rounded-2xl bg-black/40 border border-white/5 flex items-center justify-between text-xs"
+                  >
+                    <div>
+                      <p className="font-semibold text-white">{acc.name}</p>
+                      <p className="text-[10px] text-gray-500">••••{acc.mask}</p>
+                    </div>
+                    <span className="font-bold text-amber-300">{formatMoney(acc.balance)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Auto-detected Loan Payments from Activity */}
+          {autoDetectedDebtPayments.length > 0 && (
+            <div className="p-4 rounded-3xl bg-zinc-900/85 backdrop-blur-2xl border border-rose-500/25 shadow-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-xl bg-rose-500/20 text-rose-400">
+                    <Car size={16} />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-white">
+                      Auto-Detected Loan Payments
+                    </h3>
+                    <p className="text-[10px] text-gray-400">
+                      Recent debt payments detected from activity
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs font-extrabold text-rose-400">
+                  {formatMoney(autoLoanTotal)}
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                {autoDetectedDebtPayments.map((item) => {
+                  const isPromoted = promotedIds.has(item.id);
+                  return (
+                    <div
+                      key={item.id}
+                      className="p-2.5 rounded-2xl bg-black/40 border border-white/5 flex items-center justify-between gap-2 text-xs"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-semibold text-white truncate">{item.name}</p>
+                        <p className="text-[10px] text-gray-500">{item.date || 'Recent'}</p>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="font-bold text-rose-400">
+                          {formatMoney(item.amount)}
+                        </span>
+                        <button
+                          onClick={() => handlePromoteDebt(item)}
+                          disabled={isPromoted}
+                          className={`px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all ${
+                            isPromoted
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              : 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-500/30 active:scale-95'
+                          }`}
+                        >
+                          {isPromoted ? (
+                            <>
+                              <CheckCircle2 size={11} /> Tracked
+                            </>
+                          ) : (
+                            <>
+                              <Plus size={11} /> Add as Loan
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Tracked Loans List */}
+          {debts.length === 0 ? (
+            <GlassCard title="Tracked Debts & Loans" icon={<Car className="text-red-400" />} amount="$0">
+              <p className="text-xs text-gray-400 py-3 text-center">
+                No debts or loans tracked yet. Tap below to track your 2018 Kia Sportage auto loan or credit lines.
+              </p>
+              <button
+                onClick={onAdd}
+                className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-medium text-xs flex items-center justify-center gap-2 transition-colors"
+              >
+                <Plus size={14} /> Add a Debt or Loan
+              </button>
+            </GlassCard>
+          ) : (
+            debts.map((debt) => {
+              const remaining = debtBalance(debt, entries);
+              const original = debt.original || debt.balance || remaining;
+              const paidSoFar = Math.max(original - remaining, 0);
+              const monthlyTotal = (debt.minPayment || 0) + (debt.extraPayment || 0);
+              const months = monthsToPayoff(remaining, monthlyTotal, debt.apr);
+              const payments = entries.filter((e) => e.kind === 'payment' && e.debtId === debt.id);
+
+              const isKia = (debt.name || '').toLowerCase().includes('kia') || (debt.name || '').toLowerCase().includes('sportage');
+
+              return (
+                <GlassCard
+                  key={debt.id}
+                  title={debt.name}
+                  icon={<Car className="text-red-400" />}
+                  amount={`${formatMoney(remaining)} Left`}
+                >
+                  <div className="space-y-4 mt-2">
+                    {/* Strategic Badges for Kia Sportage */}
+                    {isKia && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        <span className="text-[10px] font-bold px-2.5 py-1 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                          <ShieldAlert size={12} /> Mark Extra Payments: Principal-Only
+                        </span>
+                        <span className="text-[10px] font-bold px-2.5 py-1 rounded-xl bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center gap-1">
+                          <ShieldCheck size={12} /> Hold and pay off — do not lease
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-gray-400">Target Payoff Date</span>
+                      <span className="font-semibold text-white">
+                        {months === null
+                          ? 'Payment too low for APR'
+                          : months === 0
+                          ? 'Paid off!'
+                          : `${months} Month${months === 1 ? '' : 's'}`}
+                      </span>
+                    </div>
+
+                    <ProgressBar
+                      label="Principal Progress"
+                      current={paidSoFar}
+                      max={original}
+                      color="bg-rose-400"
+                    />
+
+                    <div className="p-3.5 bg-black/40 rounded-2xl border border-white/5 space-y-2.5 text-xs">
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-400">Scheduled Minimum</span>
+                        <span className="font-semibold text-white">
+                          {formatMoney(debt.minPayment || 0, { cents: 'always' })}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-400">Principal-Only Extra</span>
+                        <span className="font-semibold text-emerald-400">
+                          +{formatMoney(debt.extraPayment || 0, { cents: 'always' })}
+                        </span>
+                      </div>
+                      {debt.apr && (
+                        <div className="flex justify-between items-center text-[11px] text-gray-500">
+                          <span>Annual Interest Rate (APR)</span>
+                          <span className="font-semibold text-rose-300">{debt.apr}%</span>
+                        </div>
+                      )}
+                      <div className="h-px w-full bg-white/10" />
+                      <div className="flex justify-between items-center">
+                        <span className="font-semibold text-gray-200">Total Monthly Allocation</span>
+                        <span className="text-base font-bold text-white">
+                          {formatMoney(monthlyTotal, { cents: 'always' })}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Logged payments */}
+                    {payments.length > 0 && (
+                      <div className="space-y-2 pt-2 border-t border-white/5">
+                        <p className="text-[11px] uppercase font-semibold text-gray-400">Logged Payments</p>
+                        {payments.slice(0, 4).map((p) => (
+                          <div
+                            key={p.id}
+                            className="flex justify-between items-center text-xs p-2 bg-black/20 rounded-xl"
+                          >
+                            <span className="text-gray-400">{p.date || 'Recent payment'}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-emerald-400 font-semibold">-{formatMoney(p.amount)}</span>
+                              <button
+                                onClick={() => onDelete(p.id)}
+                                aria-label="Remove payment"
+                                className="text-gray-500 hover:text-red-400"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        onClick={onAdd}
+                        className="flex-1 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-semibold flex items-center justify-center gap-1 transition-colors"
+                      >
+                        <Plus size={14} /> Log Payment
+                      </button>
+                      <button
+                        onClick={() => onDelete(debt.id)}
+                        aria-label={`Delete ${debt.name}`}
+                        className="px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-semibold transition-colors"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                </GlassCard>
+              );
+            })
+          )}
+
+          <button
+            onClick={onAdd}
+            className="w-full py-2.5 rounded-xl border border-dashed border-white/15 text-xs font-medium text-gray-400 hover:text-white hover:border-white/30 flex items-center justify-center gap-1.5 transition-colors"
+          >
+            <Plus size={14} /> Add Another Debt or Loan
+          </button>
+        </div>
+      )}
     </div>
   );
 }

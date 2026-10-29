@@ -84,6 +84,113 @@ export const EXPENSE_CATEGORIES = [
   'Other',
 ];
 
+export function getCategoryStyle(category = '', kind = 'expense') {
+  if (kind === 'income') {
+    return {
+      bg: 'bg-emerald-500/20',
+      text: 'text-emerald-300',
+      border: 'border-emerald-500/30',
+      bar: 'bg-emerald-400',
+    };
+  }
+  if (kind === 'payment') {
+    return {
+      bg: 'bg-rose-500/20',
+      text: 'text-rose-300',
+      border: 'border-rose-500/30',
+      bar: 'bg-rose-400',
+    };
+  }
+
+  const c = String(category).toUpperCase().replace(/\s+/g, '_');
+  if (c.includes('FOOD') || c.includes('DRINK') || c.includes('DINING') || c.includes('GROCER') || c.includes('RESTAURANT')) {
+    return {
+      bg: 'bg-amber-500/20',
+      text: 'text-amber-300',
+      border: 'border-amber-500/30',
+      bar: 'bg-amber-400',
+    };
+  }
+  if (c.includes('TRAVEL') || c.includes('FLIGHT') || c.includes('HOTEL')) {
+    return {
+      bg: 'bg-sky-500/20',
+      text: 'text-sky-300',
+      border: 'border-sky-500/30',
+      bar: 'bg-sky-400',
+    };
+  }
+  if (c.includes('MERCHANDISE') || c.includes('SHOPPING') || c.includes('RETAIL')) {
+    return {
+      bg: 'bg-purple-500/20',
+      text: 'text-purple-300',
+      border: 'border-purple-500/30',
+      bar: 'bg-purple-400',
+    };
+  }
+  if (c.includes('TRANSPORT') || c.includes('GAS') || c.includes('AUTO') || c.includes('PARKING')) {
+    return {
+      bg: 'bg-cyan-500/20',
+      text: 'text-cyan-300',
+      border: 'border-cyan-500/30',
+      bar: 'bg-cyan-400',
+    };
+  }
+  if (c.includes('SERVICE')) {
+    return {
+      bg: 'bg-indigo-500/20',
+      text: 'text-indigo-300',
+      border: 'border-indigo-500/30',
+      bar: 'bg-indigo-400',
+    };
+  }
+  if (c.includes('ENTERTAINMENT') || c.includes('STREAMING') || c.includes('MOVIES') || c.includes('MUSIC')) {
+    return {
+      bg: 'bg-pink-500/20',
+      text: 'text-pink-300',
+      border: 'border-pink-500/30',
+      bar: 'bg-pink-400',
+    };
+  }
+  if (c.includes('LOAN') || c.includes('DEBT') || c.includes('CAR_PAYMENT') || c.includes('MORTGAGE')) {
+    return {
+      bg: 'bg-rose-500/20',
+      text: 'text-rose-300',
+      border: 'border-rose-500/30',
+      bar: 'bg-rose-400',
+    };
+  }
+  if (c.includes('FEE') || c.includes('OVERDRAFT') || c.includes('ATM')) {
+    return {
+      bg: 'bg-red-500/20',
+      text: 'text-red-300',
+      border: 'border-red-500/30',
+      bar: 'bg-red-400',
+    };
+  }
+  if (c.includes('TRANSFER')) {
+    return {
+      bg: 'bg-teal-500/20',
+      text: 'text-teal-300',
+      border: 'border-teal-500/30',
+      bar: 'bg-teal-400',
+    };
+  }
+  if (c.includes('SUBSCRIPTION') || c.includes('BILL') || c.includes('UTILITY')) {
+    return {
+      bg: 'bg-violet-500/20',
+      text: 'text-violet-300',
+      border: 'border-violet-500/30',
+      bar: 'bg-violet-400',
+    };
+  }
+  return {
+    bg: 'bg-zinc-500/20',
+    text: 'text-zinc-300',
+    border: 'border-zinc-500/30',
+    bar: 'bg-blue-400',
+  };
+}
+
 export const uid = () =>
   globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 
