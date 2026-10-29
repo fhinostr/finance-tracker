@@ -140,6 +140,9 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
           const resolvedType = isInv ? 'investment' : isCredit ? 'credit' : 'bank';
 
           let balance = Number(da.balance) || 0;
+          if (resolvedType === 'bank' && da.available != null) {
+            balance = Number(da.available);
+          }
           if (resolvedType === 'investment' && data.investments?.totalValue) {
             balance = data.investments.totalValue;
           }
@@ -246,12 +249,16 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
             const isCredit = rawType === 'credit' || rawSub.includes('credit');
             const isInv = isRobinhood || rawType === 'investment' || rawSub.includes('brokerage');
             const type = isInv ? 'investment' : isCredit ? 'credit' : 'bank';
+            let balance = Number(acc.balance) || 0;
+            if (type === 'bank' && acc.available != null) {
+              balance = Number(acc.available);
+            }
             return {
               id: acc.id || `${data.item_id || 'acc'}-${idx}`,
               name: `${institutionName}${acc.name ? ` (${acc.name})` : ''}`.trim(),
               type,
               subtype: acc.subtype,
-              balance: Number(acc.balance) || 0,
+              balance,
               available: acc.available,
               mask: acc.mask || '••••',
               accessToken: data.access_token || 'token_' + Date.now(),

@@ -95,8 +95,12 @@ Deno.serve(async (req) => {
           item_id: itemId,
           accounts: accountsResponse.data.accounts.map((acc: any) => {
             let balance = acc.balances.current;
-            if (acc.type === 'depository' && (balance === null || balance === undefined)) {
+            if (acc.type === 'depository' && acc.balances.available != null) {
+              // Prioritize available balance for checking/savings so pending debits/purchases are deducted immediately
               balance = acc.balances.available;
+            } else if (acc.type === 'credit' && acc.balances.limit != null && acc.balances.available != null) {
+              const pendingOwed = acc.balances.limit - acc.balances.available;
+              balance = Math.max(acc.balances.current || 0, pendingOwed);
             }
             return {
               id: acc.account_id,
@@ -105,7 +109,9 @@ Deno.serve(async (req) => {
               type: acc.type,
               subtype: acc.subtype,
               balance: balance != null ? balance : 0,
+              current: acc.balances.current,
               available: acc.balances.available,
+              limit: acc.balances.limit,
               mask: acc.mask,
             };
           }),
@@ -158,8 +164,12 @@ Deno.serve(async (req) => {
         const accRes = await plaidClient.accountsGet({ access_token });
         results.accounts = accRes.data.accounts.map((acc: any) => {
           let balance = acc.balances.current;
-          if (acc.type === 'depository' && (balance === null || balance === undefined)) {
+          if (acc.type === 'depository' && acc.balances.available != null) {
+            // Prioritize available balance for checking/savings so pending debits/purchases are deducted immediately
             balance = acc.balances.available;
+          } else if (acc.type === 'credit' && acc.balances.limit != null && acc.balances.available != null) {
+            const pendingOwed = acc.balances.limit - acc.balances.available;
+            balance = Math.max(acc.balances.current || 0, pendingOwed);
           }
           return {
             id: acc.account_id,
@@ -168,7 +178,9 @@ Deno.serve(async (req) => {
             type: acc.type,
             subtype: acc.subtype,
             balance: balance != null ? balance : 0,
+            current: acc.balances.current,
             available: acc.balances.available,
+            limit: acc.balances.limit,
             mask: acc.mask,
           };
         });
@@ -191,13 +203,15 @@ Deno.serve(async (req) => {
 
       try {
         const syncRes = await plaidClient.transactionsSync({ access_token });
-        results.transactions = syncRes.data.added.map((tx: any) => ({
+        const allTxs = [...(syncRes.data.added || []), ...(syncRes.data.modified || [])];
+        results.transactions = allTxs.map((tx: any) => ({
           id: tx.transaction_id,
           name: tx.name,
           amount: Math.abs(tx.amount),
           kind: tx.amount < 0 ? 'income' : 'expense',
           category: tx.personal_finance_category?.primary || tx.category?.[0] || 'Other',
           date: tx.date,
+          pending: Boolean(tx.pending),
         }));
       } catch (e: any) {
         console.warn('Transactions sync error:', e?.message);
