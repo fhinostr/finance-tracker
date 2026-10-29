@@ -39,11 +39,11 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
   const [keysSaved, setKeysSaved] = useState(false);
 
   // Initialize or Refresh Link Token
-  const requestLinkToken = useCallback(async () => {
+  const requestLinkToken = useCallback(async (accountType = 'bank') => {
     setLoading(true);
     setErrorMessage('');
     try {
-      const data = await callPlaidApi('create-link-token');
+      const data = await callPlaidApi('create-link-token', { account_type: accountType });
       if (data?.link_token) {
         setLinkToken(data.link_token);
         setShowKeySettings(false);
@@ -59,7 +59,7 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
 
   useEffect(() => {
     let active = true;
-    callPlaidApi('create-link-token')
+    callPlaidApi('create-link-token', { account_type: 'bank' })
       .then((data) => {
         if (!active) return;
         if (data?.link_token) {
@@ -320,13 +320,49 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
 
           {/* Plaid Link Official Button */}
           {linkToken && ready ? (
-            <button
-              onClick={() => open()}
-              disabled={loading}
-              className="w-full py-4 rounded-2xl bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-500 hover:from-blue-400 hover:to-emerald-400 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-xl shadow-blue-500/20 active:scale-[0.98] transition-transform"
-            >
-              <ShieldCheck size={20} /> Connect Bank or Robinhood via Plaid
-            </button>
+            <div className="space-y-2.5">
+              <button
+                onClick={() => {
+                  requestLinkToken('bank').then(() => open());
+                }}
+                disabled={loading}
+                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-400 hover:to-indigo-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25 active:scale-[0.98] transition-transform"
+              >
+                <Building2 size={18} /> Connect Bank Account (Checking, Savings, Cards)
+              </button>
+
+              <button
+                onClick={() => {
+                  requestLinkToken('investment').then(() => open());
+                }}
+                disabled={loading}
+                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 active:scale-[0.98] transition-transform"
+              >
+                <TrendingUp size={18} /> Connect Robinhood Portfolio
+              </button>
+
+              {plaidEnv === 'sandbox' && (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300 space-y-1">
+                  <div className="flex items-center gap-1.5 font-semibold">
+                    <AlertCircle size={13} className="shrink-0" />
+                    <span>Sandbox Test Credentials</span>
+                  </div>
+                  <p className="leading-relaxed">
+                    Because you are in <strong>Sandbox Mode</strong>, Plaid only connects to mock test logins. Do not enter your real banking password!
+                    <br />
+                    • Username: <code className="bg-black/40 px-1 py-0.5 rounded font-mono text-white">user_good</code>
+                    <br />
+                    • Password: <code className="bg-black/40 px-1 py-0.5 rounded font-mono text-white">pass_good</code>
+                    <br />
+                    • SMS / MFA Code: <code className="bg-black/40 px-1 py-0.5 rounded font-mono text-white">1234</code>
+                    <br />
+                    <span className="text-gray-400">
+                      To connect your real bank or Robinhood with your real login, switch Environment below to <strong>Production</strong> using your Production secret.
+                    </span>
+                  </p>
+                </div>
+              )}
+            </div>
           ) : (
             <div className="space-y-2">
               <button

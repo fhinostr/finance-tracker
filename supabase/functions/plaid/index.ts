@@ -53,13 +53,19 @@ Deno.serve(async (req) => {
 
     // 1. Create Link Token
     if (action === 'create-link-token') {
-      const response = await plaidClient.linkTokenCreate({
+      const isInvestment = account_type === 'investment';
+      // Banks require transactions; Robinhood/brokerages require investments
+      const products = isInvestment ? [Products.Investments] : [Products.Transactions];
+
+      const linkTokenRequest: any = {
         user: { client_user_id: 'user-default' },
         client_name: 'Personal Finance Tracker',
-        products: [Products.Transactions, Products.Investments],
+        products,
         country_codes: [CountryCode.Us],
         language: 'en',
-      });
+      };
+
+      const response = await plaidClient.linkTokenCreate(linkTokenRequest);
 
       return new Response(
         JSON.stringify({ link_token: response.data.link_token }),
