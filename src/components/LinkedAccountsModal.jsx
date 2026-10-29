@@ -112,22 +112,38 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
         const institutionName = metadata?.institution?.name || 'Linked Financial Account';
         const isRobinhood = institutionName.toLowerCase().includes('robinhood');
 
-        const newAcc = {
-          id: data.item_id || 'acc-' + Date.now(),
-          name: institutionName,
-          type: isRobinhood ? 'investment' : 'bank',
-          balance: data.accounts?.[0]?.balance || 0,
-          mask: data.accounts?.[0]?.mask || '••••',
-          accessToken: data.access_token || 'token_' + Date.now(),
-          lastSynced: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        };
+        let newAccounts = [];
+        if (Array.isArray(data.accounts) && data.accounts.length > 0) {
+          newAccounts = data.accounts.map((acc, idx) => ({
+            id: acc.id || `${data.item_id || 'acc'}-${idx}`,
+            name: `${institutionName}${acc.name ? ` (${acc.name})` : ''}`.trim(),
+            type: isRobinhood || acc.type === 'investment' ? 'investment' : 'bank',
+            balance: acc.balance || 0,
+            mask: acc.mask || '••••',
+            accessToken: data.access_token || 'token_' + Date.now(),
+            lastSynced: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          }));
+        } else {
+          newAccounts = [
+            {
+              id: data.item_id || 'acc-' + Date.now(),
+              name: institutionName,
+              type: isRobinhood ? 'investment' : 'bank',
+              balance: 0,
+              mask: '••••',
+              accessToken: data.access_token || 'token_' + Date.now(),
+              lastSynced: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            },
+          ];
+        }
 
-        const next = [...accounts, newAcc];
+        const next = [...accounts, ...newAccounts];
         persist(next);
-        setStatusMessage(`Connected ${newAcc.name}!`);
+        setStatusMessage(`Connected ${institutionName}!`);
 
-        // Trigger an initial sync for holdings and transactions
-        syncAccount(newAcc);
+        if (newAccounts[0]) {
+          syncAccount(newAccounts[0]);
+        }
       } catch (err) {
         setErrorMessage(`Connection failed: ${err.message || 'Error connecting account'}`);
       } finally {
@@ -142,44 +158,6 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
     token: linkToken,
     onSuccess,
   });
-
-  // Simulated link connection for quick preview
-  const connectDemo = (type) => {
-    setLoading(true);
-    setTimeout(() => {
-      let demoAcc;
-      if (type === 'robinhood') {
-        demoAcc = {
-          id: 'demo-robinhood-' + Date.now(),
-          name: 'Robinhood',
-          type: 'investment',
-          balance: 8450.00,
-          mask: '9281',
-          holdings: [
-            { symbol: 'VOO', name: 'Vanguard S&P 500', shares: 12, value: 5880 },
-            { symbol: 'AAPL', name: 'Apple Inc.', shares: 11, value: 2570 },
-          ],
-          lastSynced: 'Just now',
-        };
-        if (onUpdateInvestmentTotal) {
-          onUpdateInvestmentTotal(demoAcc.balance);
-        }
-      } else {
-        demoAcc = {
-          id: 'demo-bank-' + Date.now(),
-          name: 'Chase Checking',
-          type: 'bank',
-          balance: 3420.50,
-          mask: '4401',
-          lastSynced: 'Just now',
-        };
-      }
-      const next = [...accounts, demoAcc];
-      persist(next);
-      setLoading(false);
-      setStatusMessage(`Connected preview for ${demoAcc.name}!`);
-    }, 500);
-  };
 
   const removeAccount = (id) => {
     const next = accounts.filter((a) => a.id !== id);
@@ -360,27 +338,6 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
             </div>
           )}
 
-          {/* Quick Demo Buttons for Instant Preview */}
-          <div className="pt-2">
-            <p className="text-[11px] text-gray-500 mb-2 font-medium">Or try preview accounts:</p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => connectDemo('bank')}
-                disabled={loading}
-                className="py-2.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-gray-300 flex items-center justify-center gap-1.5 transition-colors"
-              >
-                <Building2 size={14} className="text-blue-400" /> Preview Bank
-              </button>
-              <button
-                onClick={() => connectDemo('robinhood')}
-                disabled={loading}
-                className="py-2.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-emerald-300 flex items-center justify-center gap-1.5 transition-colors"
-              >
-                <TrendingUp size={14} className="text-emerald-400" /> Preview Robinhood
-              </button>
-            </div>
-          </div>
-
           {/* Plaid API Keys Setup Panel */}
           <div className="mt-4 rounded-2xl bg-white/5 border border-white/10 overflow-hidden">
             <button
@@ -460,6 +417,28 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
                 </button>
               </form>
             )}
+          </div>
+
+          {/* Reset Tracker to Clean Slate */}
+          <div className="pt-2 text-center">
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm('Clear all stored entries and reset to a clean, empty tracker?')) {
+                  try {
+                    localStorage.removeItem('finance-tracker:v1');
+                    localStorage.removeItem('finance-tracker:v2');
+                    localStorage.removeItem('finance-tracker:linked-accounts:v1');
+                  } catch {
+                    // ignore
+                  }
+                  window.location.reload();
+                }
+              }}
+              className="text-[11px] text-gray-500 hover:text-red-400 underline transition-colors"
+            >
+              Reset tracker & clear any cached placeholder data
+            </button>
           </div>
         </div>
       </motion.div>

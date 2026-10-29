@@ -1,7 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
 
-const STORAGE_KEY = 'finance-tracker:v1';
+const STORAGE_KEY = 'finance-tracker:v2';
 const STORAGE_KEY_ACCOUNTS = 'finance-tracker:linked-accounts:v1';
+
+// Automatically clean up legacy mock seed data from v1
+try {
+  if (typeof window !== 'undefined') {
+    const v1 = localStorage.getItem('finance-tracker:v1');
+    if (v1 && v1.includes('Rent (Maryland)')) {
+      localStorage.removeItem('finance-tracker:v1');
+    }
+  }
+} catch {
+  // ignore
+}
 
 export function getStoredAccounts() {
   try {
@@ -33,13 +45,6 @@ export const EXPENSE_CATEGORIES = [
   'Other',
 ];
 
-/** Monthly spending targets for variable (one-time) expenses, by category. */
-export const DEFAULT_BUDGETS = {
-  Groceries: 185,
-  Dining: 150,
-  Gas: 146,
-};
-
 export const uid = () =>
   globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 
@@ -64,26 +69,6 @@ export function formatMoney(value, { cents = 'auto' } = {}) {
   });
 }
 
-/** Starting data — mirrors the numbers that used to be hard-coded in the UI. */
-function seedEntries() {
-  const today = toISODate();
-  return [
-    { id: uid(), kind: 'income', name: 'Salary (net)', amount: 5475, frequency: 'monthly', date: today },
-    { id: uid(), kind: 'income', name: 'Performance Bonus (net)', amount: 980, frequency: 'monthly', optional: true, date: today },
-
-    { id: uid(), kind: 'expense', name: 'Rent (Maryland)', amount: 2000, category: 'Bills', frequency: 'monthly', note: '1st of Month', date: today },
-    { id: uid(), kind: 'expense', name: 'Utilities & Internet', amount: 220, category: 'Bills', frequency: 'monthly', note: 'Varies', date: today },
-    { id: uid(), kind: 'expense', name: 'Auto Insurance', amount: 160, category: 'Bills', frequency: 'monthly', note: '15th of Month', date: today },
-    { id: uid(), kind: 'expense', name: 'Gemini Advanced', amount: 8, category: 'Entertainment', frequency: 'monthly', note: 'Auto-renews', date: today },
-
-    { id: uid(), kind: 'expense', name: 'Bulk Clean Prep (Costco/Walmart)', amount: 185, category: 'Groceries', frequency: 'one-time', date: today },
-    { id: uid(), kind: 'expense', name: 'Dining Out (CAVA, Chipotle)', amount: 65, category: 'Dining', frequency: 'one-time', date: today },
-    { id: uid(), kind: 'expense', name: 'Gasoline (1,000 miles)', amount: 146, category: 'Gas', frequency: 'one-time', date: today },
-
-    { id: uid(), kind: 'debt', name: '2018 Kia Sportage', balance: 9000, original: 12500, minPayment: 230, extraPayment: 570, apr: null, date: today },
-  ];
-}
-
 function load() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -92,9 +77,10 @@ function load() {
       if (Array.isArray(parsed?.entries)) return parsed;
     }
   } catch {
-    // Corrupt or unavailable storage — fall back to seed data.
+    // fallback
   }
-  return { entries: seedEntries(), budgets: DEFAULT_BUDGETS };
+  // Start completely clean — zero placeholder/mock entries
+  return { entries: [], budgets: {} };
 }
 
 /** Current balance of a debt = starting balance minus every logged payment toward it. */
@@ -102,7 +88,7 @@ export function debtBalance(debt, entries) {
   const paid = entries
     .filter((e) => e.kind === 'payment' && e.debtId === debt.id)
     .reduce((sum, e) => sum + e.amount, 0);
-  return Math.max(debt.balance - paid, 0);
+  return Math.max((debt.balance || 0) - paid, 0);
 }
 
 /** Months to pay off, accounting for APR when known. Returns null if the payment can't cover interest. */
@@ -122,7 +108,7 @@ export function useFinanceData() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } catch {
-      // Storage full or disabled (e.g. private mode) — keep working in memory.
+      // Storage full or disabled
     }
   }, [data]);
 
@@ -133,11 +119,25 @@ export function useFinanceData() {
   const removeEntry = useCallback((id) => {
     setData((d) => ({
       ...d,
-      // Removing a debt also removes the payments logged against it.
       entries: d.entries.filter((e) => e.id !== id && e.debtId !== id),
     }));
   }, []);
 
-  return { entries: data.entries, budgets: data.budgets ?? DEFAULT_BUDGETS, addEntry, removeEntry };
-}
+  const resetAllData = useCallback(() => {
+    setData({ entries: [], budgets: {} });
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(STORAGE_KEY_ACCOUNTS);
+    } catch {
+      // ignore
+    }
+  }, []);
 
+  return {
+    entries: data.entries,
+    budgets: data.budgets ?? {},
+    addEntry,
+    removeEntry,
+    resetAllData,
+  };
+}

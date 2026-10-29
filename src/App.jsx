@@ -246,6 +246,11 @@ export default function PersonalFinanceTracker() {
                 debtSplit={debtSplit}
                 savingsSplit={savingsSplit}
                 entries={entries}
+                linkedAccounts={linkedAccounts}
+                onOpenLink={() => {
+                  setLinkedAccounts(getStoredAccounts());
+                  setShowLinkedModal(true);
+                }}
                 onDelete={removeEntry}
                 onAdd={() => openAdd(false)}
               />
@@ -348,21 +353,64 @@ function DashboardTab({
   debtSplit,
   savingsSplit,
   entries,
+  linkedAccounts = [],
+  onOpenLink,
   onDelete,
   onAdd,
 }) {
-  // Combine all categories that either have a budget or have spending
-  const allCategories = Array.from(
-    new Set([...Object.keys(budgets), ...Object.keys(categoryTotals)]),
-  );
-
-  // Recent entries (excluding seed debts themselves, showing transactions)
+  const allCategories = Object.keys(categoryTotals);
   const recentTransactions = entries
     .filter((e) => e.kind !== 'debt')
     .slice(0, 6);
 
+  const totalBankBalances = linkedAccounts.reduce(
+    (sum, a) => sum + (Number(a.balance) || 0),
+    0,
+  );
+
   return (
     <div className="space-y-5">
+      {/* Linked Accounts Overview if any connected */}
+      {linkedAccounts.length > 0 && (
+        <GlassCard
+          title="Connected Balances"
+          icon={<Building2 className="text-blue-400" />}
+          amount={formatMoney(totalBankBalances)}
+        >
+          <div className="space-y-2">
+            {linkedAccounts.map((acc) => (
+              <div
+                key={acc.id}
+                className="flex items-center justify-between p-2.5 bg-black/30 rounded-xl border border-white/5"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div
+                    className={`p-1.5 rounded-lg ${
+                      acc.type === 'investment'
+                        ? 'bg-emerald-500/20 text-emerald-400'
+                        : 'bg-blue-500/20 text-blue-400'
+                    }`}
+                  >
+                    {acc.type === 'investment' ? <TrendingUp size={14} /> : <Building2 size={14} />}
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-white">{acc.name}</p>
+                    <p className="text-[10px] text-gray-500">••••{acc.mask}</p>
+                  </div>
+                </div>
+                <span className="text-xs font-bold text-white">{formatMoney(acc.balance)}</span>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={onOpenLink}
+            className="mt-2 w-full py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-medium text-gray-300 transition-colors"
+          >
+            Manage & Sync Accounts
+          </button>
+        </GlassCard>
+      )}
+
       {/* Variable Expenses */}
       <GlassCard
         title="Variable Expenses"
@@ -376,21 +424,13 @@ function DashboardTab({
             allCategories.map((cat) => {
               const spent = categoryTotals[cat] || 0;
               const max = budgets[cat] || spent || 100;
-              const color =
-                cat === 'Groceries'
-                  ? 'bg-blue-400'
-                  : cat === 'Dining'
-                  ? 'bg-purple-400'
-                  : cat === 'Gas'
-                  ? 'bg-emerald-400'
-                  : 'bg-amber-400';
               return (
                 <ProgressBar
                   key={cat}
                   label={cat}
                   current={spent}
                   max={max}
-                  color={color}
+                  color="bg-blue-400"
                 />
               );
             })
@@ -668,50 +708,99 @@ function DebtTab({ debts, entries, onDelete, onAdd }) {
 }
 
 function WealthTab({ debts, entries, linkedAccounts = [], onOpenLink }) {
-  const kiaDebt = debts.find((d) => d.name.toLowerCase().includes('kia')) || debts[0];
-  const kiaRemaining = kiaDebt ? debtBalance(kiaDebt, entries) : 0;
-  const robinhoodAcc = linkedAccounts.find((a) => a.type === 'investment' || a.name.toLowerCase().includes('robinhood'));
+  const bankAccounts = linkedAccounts.filter(
+    (a) =>
+      a.type === 'bank' ||
+      a.type === 'depository' ||
+      (!a.type?.includes('investment') && !a.name?.toLowerCase().includes('robinhood')),
+  );
+  const investmentAccounts = linkedAccounts.filter(
+    (a) => a.type === 'investment' || a.name?.toLowerCase().includes('robinhood'),
+  );
+
+  const totalBankAssets = bankAccounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+  const totalInvestmentAssets = investmentAccounts.reduce(
+    (sum, a) => sum + (Number(a.balance) || 0),
+    0,
+  );
+  const totalAssets = totalBankAssets + totalInvestmentAssets;
+  const totalDebts = debts.reduce((sum, d) => sum + debtBalance(d, entries), 0);
+  const netWorth = totalAssets - totalDebts;
+
+  const hasAnyAccounts = linkedAccounts.length > 0;
+  const hasAnyDebts = debts.length > 0;
 
   return (
     <div className="space-y-4">
-      {/* Robinhood Portfolio Card */}
-      {robinhoodAcc ? (
-        <GlassCard
-          title="Robinhood Portfolio"
-          icon={<TrendingUp className="text-emerald-400" />}
-          amount={formatMoney(robinhoodAcc.balance)}
-        >
-          <div className="space-y-3">
-            <div className="flex justify-between items-center text-xs text-gray-400">
-              <span>Account ••••{robinhoodAcc.mask}</span>
-              <span className="text-emerald-400 font-medium">Synced {robinhoodAcc.lastSynced}</span>
-            </div>
+      {/* Total Net Worth Card */}
+      <GlassCard
+        title="Total Net Worth"
+        icon={<PiggyBank className="text-green-400" />}
+        amount={formatMoney(netWorth)}
+      >
+        <p className="text-xs text-gray-400 mb-3">
+          Live net worth calculated strictly from your connected bank accounts, Robinhood, and debts.
+        </p>
 
-            {robinhoodAcc.holdings && robinhoodAcc.holdings.length > 0 && (
-              <div className="space-y-2 pt-1">
-                <p className="text-[11px] uppercase tracking-wider font-semibold text-gray-400">Holdings</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {robinhoodAcc.holdings.map((h) => (
-                    <div key={h.symbol} className="p-2.5 rounded-xl bg-black/40 border border-white/5">
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs font-bold text-white">{h.symbol}</span>
-                        <span className="text-xs font-semibold text-gray-200">{formatMoney(h.value)}</span>
-                      </div>
-                      <p className="text-[10px] text-gray-500 truncate">{h.name}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <button
-              onClick={onOpenLink}
-              className="mt-2 w-full py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-medium text-gray-300 transition-colors"
-            >
-              Manage in Linked Accounts
-            </button>
+        <div className="grid grid-cols-3 gap-2">
+          <div className="p-3 bg-black/40 rounded-xl border border-white/5">
+            <p className="text-[10px] uppercase font-semibold text-gray-500 mb-1">Cash in Bank</p>
+            <p className="text-sm font-bold text-blue-400">{formatMoney(totalBankAssets)}</p>
           </div>
-        </GlassCard>
+          <div className="p-3 bg-black/40 rounded-xl border border-white/5">
+            <p className="text-[10px] uppercase font-semibold text-gray-500 mb-1">Investments</p>
+            <p className="text-sm font-bold text-emerald-400">{formatMoney(totalInvestmentAssets)}</p>
+          </div>
+          <div className="p-3 bg-black/40 rounded-xl border border-white/5">
+            <p className="text-[10px] uppercase font-semibold text-gray-500 mb-1">Debts</p>
+            <p className="text-sm font-bold text-red-400">{formatMoney(totalDebts)}</p>
+          </div>
+        </div>
+      </GlassCard>
+
+      {/* Robinhood Portfolio Card */}
+      {investmentAccounts.length > 0 ? (
+        investmentAccounts.map((acc) => (
+          <GlassCard
+            key={acc.id}
+            title={acc.name}
+            icon={<TrendingUp className="text-emerald-400" />}
+            amount={formatMoney(acc.balance)}
+          >
+            <div className="space-y-3">
+              <div className="flex justify-between items-center text-xs text-gray-400">
+                <span>Account ••••{acc.mask}</span>
+                <span className="text-emerald-400 font-medium">Synced {acc.lastSynced}</span>
+              </div>
+
+              {acc.holdings && acc.holdings.length > 0 && (
+                <div className="space-y-2 pt-1">
+                  <p className="text-[11px] uppercase tracking-wider font-semibold text-gray-400">
+                    Portfolio Holdings
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {acc.holdings.map((h) => (
+                      <div key={h.symbol} className="p-2.5 rounded-xl bg-black/40 border border-white/5">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-bold text-white">{h.symbol}</span>
+                          <span className="text-xs font-semibold text-gray-200">{formatMoney(h.value)}</span>
+                        </div>
+                        <p className="text-[10px] text-gray-500 truncate">{h.name}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={onOpenLink}
+                className="mt-2 w-full py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-medium text-gray-300 transition-colors"
+              >
+                Manage in Linked Accounts
+              </button>
+            </div>
+          </GlassCard>
+        ))
       ) : (
         <button
           onClick={onOpenLink}
@@ -722,44 +811,94 @@ function WealthTab({ debts, entries, linkedAccounts = [], onOpenLink }) {
               <TrendingUp size={20} />
             </div>
             <div>
-              <p className="text-sm font-semibold text-white">Connect Robinhood Account</p>
-              <p className="text-xs text-gray-400">Track your portfolio value & stock positions live</p>
+              <p className="text-sm font-semibold text-white">Connect Robinhood Portfolio</p>
+              <p className="text-xs text-gray-400">Sync your live stock holdings and investment value</p>
             </div>
           </div>
           <Plus size={16} className="text-emerald-400" />
         </button>
       )}
 
-      {/* Savings & Investment Waterfall */}
-      <GlassCard
-        title="Savings & Investments"
-        icon={<PiggyBank className="text-green-400" />}
-        amount="Waterfall"
-      >
-        <p className="text-xs text-gray-400 mb-4">Capital is automatically routed to the highest priority active tier.</p>
-        <div className="space-y-3">
-          <WaterfallItem step="1" title="MD Move-in Buffer" target="$3,000" current="$1,200" status="active" />
-          <WaterfallItem step="2" title="Employer 401(k) Match" target="Max Match" current="Active" status="active" />
-          <WaterfallItem
-            step="3"
-            title={kiaDebt ? `${kiaDebt.name} Payoff` : 'Debt Payoff'}
-            target={kiaDebt ? formatMoney(kiaDebt.original || kiaDebt.balance) : '$0'}
-            current={kiaDebt ? `${formatMoney(kiaRemaining)} Left` : 'Done'}
-            status={kiaRemaining > 0 ? 'active' : 'completed'}
-          />
-          {robinhoodAcc && (
-            <WaterfallItem
-              step="4"
-              title="Robinhood Portfolio"
-              target="Growth"
-              current={formatMoney(robinhoodAcc.balance)}
-              status="active"
-            />
-          )}
-          <WaterfallItem step={robinhoodAcc ? "5" : "4"} title="Emergency HYSA" target="$10,000" current="$0" status="locked" />
-          <WaterfallItem step={robinhoodAcc ? "6" : "5"} title="Roth IRA" target="$7,000" current="$0" status="locked" />
+      {/* Connected Bank Accounts */}
+      {bankAccounts.length > 0 ? (
+        <GlassCard
+          title="Bank Accounts"
+          icon={<Building2 className="text-blue-400" />}
+          amount={formatMoney(totalBankAssets)}
+        >
+          <div className="space-y-2">
+            {bankAccounts.map((acc) => (
+              <div
+                key={acc.id}
+                className="flex items-center justify-between p-2.5 bg-black/30 rounded-xl border border-white/5"
+              >
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-blue-500/20 text-blue-400">
+                    <Building2 size={14} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-white">{acc.name}</p>
+                    <p className="text-[10px] text-gray-500">••••{acc.mask}</p>
+                  </div>
+                </div>
+                <span className="text-xs font-bold text-white">{formatMoney(acc.balance)}</span>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={onOpenLink}
+            className="mt-2 w-full py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-medium text-gray-300 transition-colors"
+          >
+            Manage Bank Accounts
+          </button>
+        </GlassCard>
+      ) : (
+        <button
+          onClick={onOpenLink}
+          className="w-full p-4 rounded-2xl bg-gradient-to-r from-blue-500/10 to-indigo-500/10 hover:from-blue-500/20 hover:to-indigo-500/20 border border-blue-500/20 text-left flex items-center justify-between transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-blue-500/20 text-blue-400">
+              <Building2 size={20} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-white">Connect Bank Account</p>
+              <p className="text-xs text-gray-400">Sync live checking & savings balances via Plaid</p>
+            </div>
+          </div>
+          <Plus size={16} className="text-blue-400" />
+        </button>
+      )}
+
+      {/* Debts Summary */}
+      {hasAnyDebts && (
+        <GlassCard
+          title="Active Debts"
+          icon={<CreditCard className="text-red-400" />}
+          amount={formatMoney(totalDebts)}
+        >
+          <div className="space-y-3">
+            {debts.map((d) => {
+              const rem = debtBalance(d, entries);
+              return (
+                <div key={d.id} className="flex justify-between items-center text-xs">
+                  <span className="text-gray-300 font-medium">{d.name}</span>
+                  <span className="text-red-400 font-semibold">{formatMoney(rem)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </GlassCard>
+      )}
+
+      {!hasAnyAccounts && !hasAnyDebts && (
+        <div className="p-6 rounded-[28px] bg-white/5 border border-white/10 text-center space-y-2">
+          <p className="text-sm font-semibold text-white">Ready for Your Real Financial Data</p>
+          <p className="text-xs text-gray-400 leading-relaxed max-w-sm mx-auto">
+            Connect your bank and Robinhood accounts above, or tap the microphone to dictate your real income and expenses. All placeholder numbers have been cleared.
+          </p>
         </div>
-      </GlassCard>
+      )}
     </div>
   );
 }
@@ -808,44 +947,4 @@ function ProgressBar({ label, current, max, color = 'bg-white' }) {
   );
 }
 
-function WaterfallItem({ step, title, target, current, status }) {
-  const isActive = status === 'active';
-  const isCompleted = status === 'completed';
 
-  return (
-    <motion.div
-      whileTap={{ scale: 0.98 }}
-      className={`p-4 rounded-2xl border flex items-center space-x-4 backdrop-blur-xl transition-all ${
-        isActive
-          ? 'bg-white/15 border-white/30 shadow-lg'
-          : isCompleted
-          ? 'bg-emerald-500/10 border-emerald-500/30'
-          : 'bg-black/20 border-white/5 opacity-50 grayscale'
-      }`}
-    >
-      <div
-        className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-bold shadow-inner ${
-          isActive
-            ? 'bg-white text-black'
-            : isCompleted
-            ? 'bg-emerald-400 text-black'
-            : 'bg-white/10 text-gray-500'
-        }`}
-      >
-        {step}
-      </div>
-      <div className="flex-1">
-        <h3 className={`font-medium tracking-tight ${isActive || isCompleted ? 'text-white' : 'text-gray-400'}`}>
-          {title}
-        </h3>
-        <p className="text-xs text-gray-400 mt-0.5">
-          {current} of {target}
-        </p>
-      </div>
-      <TrendingUp
-        size={18}
-        className={isActive ? 'text-blue-400' : isCompleted ? 'text-emerald-400' : 'text-gray-600'}
-      />
-    </motion.div>
-  );
-}
