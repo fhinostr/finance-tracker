@@ -28,6 +28,9 @@ export function getStoredAccounts() {
 export function saveStoredAccounts(accounts) {
   try {
     localStorage.setItem(STORAGE_KEY_ACCOUNTS, JSON.stringify(accounts));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('finance-tracker:accounts-updated', { detail: accounts }));
+    }
   } catch {
     // fallback
   }

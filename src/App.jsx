@@ -39,6 +39,14 @@ export default function PersonalFinanceTracker() {
   const [showLinkedModal, setShowLinkedModal] = useState(false);
   const [linkedAccounts, setLinkedAccounts] = useState(getStoredAccounts);
 
+  useEffect(() => {
+    const handleUpdate = () => {
+      setLinkedAccounts(getStoredAccounts());
+    };
+    window.addEventListener('finance-tracker:accounts-updated', handleUpdate);
+    return () => window.removeEventListener('finance-tracker:accounts-updated', handleUpdate);
+  }, []);
+
   const { entries, budgets, addEntry, removeEntry } = useFinanceData();
 
   const handleSyncTransactions = (newTxs) => {
@@ -345,6 +353,15 @@ export default function PersonalFinanceTracker() {
 
 // --- TABS ---
 
+function formatCategory(cat) {
+  if (!cat) return 'Other';
+  return cat
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .replace(/\bAnd\b/g, '&');
+}
+
 function DashboardTab({
   totalVariable,
   categoryTotals,
@@ -363,19 +380,85 @@ function DashboardTab({
     .filter((e) => e.kind !== 'debt')
     .slice(0, 6);
 
-  const totalBankBalances = linkedAccounts.reduce(
-    (sum, a) => sum + (Number(a.balance) || 0),
-    0,
+  const bankAccounts = linkedAccounts.filter(
+    (a) =>
+      a.type === 'bank' ||
+      a.type === 'depository' ||
+      (!a.type?.includes('investment') && !a.type?.includes('credit') && !a.name?.toLowerCase().includes('robinhood')),
   );
+  const creditAccounts = linkedAccounts.filter(
+    (a) => a.type === 'credit' || a.name?.toLowerCase().includes('credit') || a.subtype?.toLowerCase().includes('credit'),
+  );
+  const investmentAccounts = linkedAccounts.filter(
+    (a) => a.type === 'investment' || a.name?.toLowerCase().includes('robinhood'),
+  );
+
+  const totalCashInBank = bankAccounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+  const totalCreditBalance = creditAccounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+  const totalPortfolioValue = investmentAccounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
 
   return (
     <div className="space-y-5">
-      {/* Linked Accounts Overview if any connected */}
+      {/* Important Overview Summary Cards */}
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+        {/* Cash in Bank */}
+        <button
+          onClick={onOpenLink}
+          className="p-3 sm:p-3.5 rounded-2xl bg-white/10 hover:bg-white/15 backdrop-blur-xl border border-white/10 shadow-lg text-left transition-all active:scale-95"
+        >
+          <div className="flex items-center gap-1.5 mb-1.5 text-blue-400">
+            <Building2 size={15} />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Cash in Bank</span>
+          </div>
+          <p className="text-sm sm:text-base font-bold text-white tracking-tight truncate">
+            {formatMoney(totalCashInBank)}
+          </p>
+          <p className="text-[10px] text-gray-500 mt-0.5 truncate">
+            {bankAccounts.length > 0 ? `${bankAccounts.length} ${bankAccounts.length === 1 ? 'account' : 'accounts'}` : 'Tap to link'}
+          </p>
+        </button>
+
+        {/* Credit Card Balance */}
+        <button
+          onClick={onOpenLink}
+          className="p-3 sm:p-3.5 rounded-2xl bg-white/10 hover:bg-white/15 backdrop-blur-xl border border-white/10 shadow-lg text-left transition-all active:scale-95"
+        >
+          <div className="flex items-center gap-1.5 mb-1.5 text-amber-400">
+            <CreditCard size={15} />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Credit Cards</span>
+          </div>
+          <p className="text-sm sm:text-base font-bold text-amber-300 tracking-tight truncate">
+            {formatMoney(totalCreditBalance)}
+          </p>
+          <p className="text-[10px] text-gray-500 mt-0.5 truncate">
+            {creditAccounts.length > 0 ? `${creditAccounts.length} ${creditAccounts.length === 1 ? 'card' : 'cards'}` : 'Tap to link'}
+          </p>
+        </button>
+
+        {/* Portfolio Value */}
+        <button
+          onClick={onOpenLink}
+          className="p-3 sm:p-3.5 rounded-2xl bg-white/10 hover:bg-white/15 backdrop-blur-xl border border-white/10 shadow-lg text-left transition-all active:scale-95"
+        >
+          <div className="flex items-center gap-1.5 mb-1.5 text-emerald-400">
+            <TrendingUp size={15} />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Portfolio</span>
+          </div>
+          <p className="text-sm sm:text-base font-bold text-emerald-300 tracking-tight truncate">
+            {formatMoney(totalPortfolioValue)}
+          </p>
+          <p className="text-[10px] text-gray-500 mt-0.5 truncate">
+            {investmentAccounts.length > 0 ? 'Robinhood' : 'Tap to link'}
+          </p>
+        </button>
+      </div>
+
+      {/* Connected Accounts Breakdown if any connected */}
       {linkedAccounts.length > 0 && (
         <GlassCard
           title="Connected Balances"
           icon={<Building2 className="text-blue-400" />}
-          amount={formatMoney(totalBankBalances)}
+          amount={formatMoney(totalCashInBank + totalPortfolioValue)}
         >
           <div className="space-y-2">
             {linkedAccounts.map((acc) => (
@@ -388,17 +471,31 @@ function DashboardTab({
                     className={`p-1.5 rounded-lg ${
                       acc.type === 'investment'
                         ? 'bg-emerald-500/20 text-emerald-400'
+                        : acc.type === 'credit'
+                        ? 'bg-amber-500/20 text-amber-400'
                         : 'bg-blue-500/20 text-blue-400'
                     }`}
                   >
-                    {acc.type === 'investment' ? <TrendingUp size={14} /> : <Building2 size={14} />}
+                    {acc.type === 'investment' ? (
+                      <TrendingUp size={14} />
+                    ) : acc.type === 'credit' ? (
+                      <CreditCard size={14} />
+                    ) : (
+                      <Building2 size={14} />
+                    )}
                   </div>
                   <div>
                     <p className="text-xs font-semibold text-white">{acc.name}</p>
                     <p className="text-[10px] text-gray-500">••••{acc.mask}</p>
                   </div>
                 </div>
-                <span className="text-xs font-bold text-white">{formatMoney(acc.balance)}</span>
+                <span
+                  className={`text-xs font-bold ${
+                    acc.type === 'credit' ? 'text-amber-300' : 'text-white'
+                  }`}
+                >
+                  {formatMoney(acc.balance)}
+                </span>
               </div>
             ))}
           </div>
@@ -427,7 +524,7 @@ function DashboardTab({
               return (
                 <ProgressBar
                   key={cat}
-                  label={cat}
+                  label={formatCategory(cat)}
                   current={spent}
                   max={max}
                   color="bg-blue-400"
@@ -712,7 +809,10 @@ function WealthTab({ debts, entries, linkedAccounts = [], onOpenLink }) {
     (a) =>
       a.type === 'bank' ||
       a.type === 'depository' ||
-      (!a.type?.includes('investment') && !a.name?.toLowerCase().includes('robinhood')),
+      (!a.type?.includes('investment') && !a.type?.includes('credit') && !a.name?.toLowerCase().includes('robinhood')),
+  );
+  const creditAccounts = linkedAccounts.filter(
+    (a) => a.type === 'credit' || a.name?.toLowerCase().includes('credit') || a.subtype?.toLowerCase().includes('credit'),
   );
   const investmentAccounts = linkedAccounts.filter(
     (a) => a.type === 'investment' || a.name?.toLowerCase().includes('robinhood'),
@@ -723,12 +823,13 @@ function WealthTab({ debts, entries, linkedAccounts = [], onOpenLink }) {
     (sum, a) => sum + (Number(a.balance) || 0),
     0,
   );
-  const totalAssets = totalBankAssets + totalInvestmentAssets;
-  const totalDebts = debts.reduce((sum, d) => sum + debtBalance(d, entries), 0);
-  const netWorth = totalAssets - totalDebts;
+  const totalCreditBalance = creditAccounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+  const totalUserDebts = debts.reduce((sum, d) => sum + debtBalance(d, entries), 0);
+  const totalDebts = totalCreditBalance + totalUserDebts;
+  const netWorth = totalBankAssets + totalInvestmentAssets - totalDebts;
 
   const hasAnyAccounts = linkedAccounts.length > 0;
-  const hasAnyDebts = debts.length > 0;
+  const hasAnyDebts = totalDebts > 0;
 
   return (
     <div className="space-y-4">

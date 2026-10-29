@@ -143,6 +143,22 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Always fetch fresh account balances (checking, savings, credit cards)
+      try {
+        const accRes = await plaidClient.accountsGet({ access_token });
+        results.accounts = accRes.data.accounts.map((acc: any) => ({
+          id: acc.account_id,
+          name: acc.name,
+          type: acc.type,
+          subtype: acc.subtype,
+          balance: acc.balances.current,
+          available: acc.balances.available,
+          mask: acc.mask,
+        }));
+      } catch (e: any) {
+        console.warn('Accounts balance fetch error:', e?.message);
+      }
+
       try {
         const syncRes = await plaidClient.transactionsSync({ access_token });
         results.transactions = syncRes.data.added.map((tx: any) => ({

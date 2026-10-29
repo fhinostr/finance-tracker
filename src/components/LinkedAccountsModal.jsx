@@ -5,6 +5,7 @@ import {
   X,
   Building2,
   TrendingUp,
+  CreditCard,
   RefreshCw,
   CheckCircle2,
   AlertCircle,
@@ -79,9 +80,12 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
     };
   }, []);
 
-  const persist = useCallback((next) => {
-    setAccounts(next);
-    saveStoredAccounts(next);
+  useEffect(() => {
+    const handleUpdate = () => {
+      setAccounts(getStoredAccounts());
+    };
+    window.addEventListener('finance-tracker:accounts-updated', handleUpdate);
+    return () => window.removeEventListener('finance-tracker:accounts-updated', handleUpdate);
   }, []);
 
   const handleSavePlaidKeys = (e) => {
@@ -114,15 +118,21 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
 
         let newAccounts = [];
         if (Array.isArray(data.accounts) && data.accounts.length > 0) {
-          newAccounts = data.accounts.map((acc, idx) => ({
-            id: acc.id || `${data.item_id || 'acc'}-${idx}`,
-            name: `${institutionName}${acc.name ? ` (${acc.name})` : ''}`.trim(),
-            type: isRobinhood || acc.type === 'investment' ? 'investment' : 'bank',
-            balance: acc.balance || 0,
-            mask: acc.mask || '••••',
-            accessToken: data.access_token || 'token_' + Date.now(),
-            lastSynced: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          }));
+          newAccounts = data.accounts.map((acc, idx) => {
+            const rawType = (acc.type || '').toLowerCase();
+            const type = isRobinhood || rawType === 'investment' ? 'investment' : rawType === 'credit' ? 'credit' : 'bank';
+            return {
+              id: acc.id || `${data.item_id || 'acc'}-${idx}`,
+              name: `${institutionName}${acc.name ? ` (${acc.name})` : ''}`.trim(),
+              type,
+              subtype: acc.subtype,
+              balance: Number(acc.balance) || 0,
+              available: acc.available,
+              mask: acc.mask || '••••',
+              accessToken: data.access_token || 'token_' + Date.now(),
+              lastSynced: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            };
+          });
         } else {
           newAccounts = [
             {
@@ -137,8 +147,13 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
           ];
         }
 
-        const next = [...accounts, ...newAccounts];
-        persist(next);
+        const current = getStoredAccounts();
+        const filtered = current.filter(
+          (ex) => !newAccounts.some((n) => n.id === ex.id || (n.name === ex.name && n.mask === ex.mask)),
+        );
+        const next = [...filtered, ...newAccounts];
+        saveStoredAccounts(next);
+        setAccounts(next);
         setStatusMessage(`Connected ${institutionName}!`);
 
         if (newAccounts[0]) {
@@ -151,7 +166,7 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [accounts, persist],
+    [],
   );
 
   const { open, ready } = usePlaidLink({
@@ -160,8 +175,10 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
   });
 
   const removeAccount = (id) => {
-    const next = accounts.filter((a) => a.id !== id);
-    persist(next);
+    const current = getStoredAccounts();
+    const next = current.filter((a) => a.id !== id);
+    saveStoredAccounts(next);
+    setAccounts(next);
   };
 
   const syncAccount = async (acc) => {
@@ -178,16 +195,30 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
       if (data.investments && onUpdateInvestmentTotal) {
         onUpdateInvestmentTotal(data.investments.totalValue);
       }
-      const updated = accounts.map((a) =>
-        a.id === acc.id
-          ? {
-              ...a,
-              balance: data.investments?.totalValue ?? a.balance,
-              lastSynced: 'Just now',
+
+      const current = getStoredAccounts();
+      const updated = current.map((a) => {
+        if (a.id === acc.id) {
+          let newBal = a.balance;
+          if (a.type === 'investment' && data.investments?.totalValue !== undefined) {
+            newBal = data.investments.totalValue;
+          } else if (Array.isArray(data.accounts)) {
+            const matched = data.accounts.find((da) => da.id === a.id || da.mask === a.mask);
+            if (matched && matched.balance !== undefined) {
+              newBal = matched.balance;
             }
-          : a,
-      );
-      persist(updated);
+          }
+          return {
+            ...a,
+            balance: Number(newBal) || 0,
+            lastSynced: 'Just now',
+          };
+        }
+        return a;
+      });
+
+      saveStoredAccounts(updated);
+      setAccounts(updated);
       setStatusMessage(`Synced latest activity from ${acc.name}`);
     } catch {
       setStatusMessage('Sync complete.');
@@ -268,10 +299,18 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
                     className={`p-2.5 rounded-xl ${
                       acc.type === 'investment'
                         ? 'bg-emerald-500/20 text-emerald-400'
+                        : acc.type === 'credit'
+                        ? 'bg-amber-500/20 text-amber-400'
                         : 'bg-blue-500/20 text-blue-400'
                     }`}
                   >
-                    {acc.type === 'investment' ? <TrendingUp size={20} /> : <Building2 size={20} />}
+                    {acc.type === 'investment' ? (
+                      <TrendingUp size={20} />
+                    ) : acc.type === 'credit' ? (
+                      <CreditCard size={20} />
+                    ) : (
+                      <Building2 size={20} />
+                    )}
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
