@@ -23,6 +23,7 @@ import {
 export default function SyncDevicesModal({ isOpen, onClose, onDataRestored }) {
   const [syncUrl, setSyncUrl] = useState('');
   const [qrCodeUrl, setQrCodeUrl] = useState('');
+  const [qrError, setQrError] = useState(false);
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
@@ -31,12 +32,14 @@ export default function SyncDevicesModal({ isOpen, onClose, onDataRestored }) {
   useEffect(() => {
     if (!isOpen) return;
     setLoading(true);
+    setQrError(false);
     generateSyncUrl()
       .then((url) => {
         setSyncUrl(url);
         return QRCode.toDataURL(url, {
           width: 320,
           margin: 1.5,
+          errorCorrectionLevel: 'L',
           color: {
             dark: '#000000',
             light: '#ffffff',
@@ -48,6 +51,7 @@ export default function SyncDevicesModal({ isOpen, onClose, onDataRestored }) {
       })
       .catch((err) => {
         console.error('Failed to generate sync QR:', err);
+        setQrError(true);
       })
       .finally(() => {
         setLoading(false);
@@ -58,11 +62,32 @@ export default function SyncDevicesModal({ isOpen, onClose, onDataRestored }) {
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(syncUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
+      let targetUrl = syncUrl;
+      if (!targetUrl) {
+        targetUrl = await generateSyncUrl();
+        setSyncUrl(targetUrl);
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(targetUrl);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2500);
+      } else {
+        throw new Error('Clipboard API unavailable');
+      }
     } catch {
-      // fallback
+      // Robust execCommand fallback
+      const textarea = document.createElement('textarea');
+      textarea.value = syncUrl;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2500);
+      } catch {}
+      document.body.removeChild(textarea);
     }
   };
 
@@ -204,9 +229,18 @@ export default function SyncDevicesModal({ isOpen, onClose, onDataRestored }) {
             <div className="p-4 bg-white rounded-3xl mx-auto inline-block shadow-xl border-4 border-emerald-500/40">
               {qrCodeUrl ? (
                 <img src={qrCodeUrl} alt="Sync QR Code" className="w-56 h-56 rounded-xl mx-auto" />
+              ) : qrError ? (
+                <div className="w-56 h-56 flex flex-col items-center justify-center text-center p-3 text-zinc-800">
+                  <Smartphone className="text-emerald-600 mb-2" size={36} />
+                  <p className="text-xs font-bold text-black">Sync Link Ready</p>
+                  <p className="text-[11px] text-gray-600 mt-1">
+                    Tap the green &quot;Copy Sync Link&quot; button below and send it to your phone via Messages or AirDrop.
+                  </p>
+                </div>
               ) : (
-                <div className="w-56 h-56 flex items-center justify-center text-gray-500 text-xs">
-                  Generating sync QR...
+                <div className="w-56 h-56 flex flex-col items-center justify-center text-gray-500 text-xs gap-2">
+                  <RefreshCw className="animate-spin text-emerald-600" size={24} />
+                  <span>Generating sync QR...</span>
                 </div>
               )}
             </div>

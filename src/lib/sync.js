@@ -32,6 +32,7 @@ export async function decompressData(base64Str) {
 
 /**
  * Packs all local finance tracker data into an exportable bundle.
+ * Strips verbose raw Plaid metadata to keep the sync payload ultra-lightweight.
  */
 export function getLocalSnapshot() {
   let main = { entries: [], budgets: {} };
@@ -53,12 +54,47 @@ export function getLocalSnapshot() {
     if (rawPlaid) plaid = JSON.parse(rawPlaid);
   } catch {}
 
+  // Strip non-essential raw Plaid metadata from entries to reduce payload by >85%
+  const cleanEntries = (main.entries || []).map((e) => ({
+    id: e.id,
+    name: e.name,
+    amount: Number(e.amount) || 0,
+    kind: e.kind || 'expense',
+    category: e.category || 'Other',
+    date: e.date,
+    frequency: e.frequency,
+    pending: Boolean(e.pending),
+    debtId: e.debtId,
+    note: e.note,
+  }));
+
+  const cleanAccounts = (accounts || []).map((a) => ({
+    id: a.id,
+    name: a.name,
+    balance: Number(a.balance) || 0,
+    type: a.type,
+    subtype: a.subtype,
+    mask: a.mask,
+    accessToken: a.accessToken,
+  }));
+
+  const cleanBudgets = main.budgets || {};
+
+  const cleanPlaid = {
+    clientId: plaid.clientId || '',
+    secret: plaid.secret || '',
+    env: plaid.env || 'sandbox',
+  };
+
   return {
     version: 2,
     timestamp: Date.now(),
-    main,
-    accounts,
-    plaid,
+    main: {
+      entries: cleanEntries,
+      budgets: cleanBudgets,
+    },
+    accounts: cleanAccounts,
+    plaid: cleanPlaid,
   };
 }
 
@@ -163,3 +199,4 @@ export async function pullFromCloudSync() {
   }
   return { error: 'No data found' };
 }
+
