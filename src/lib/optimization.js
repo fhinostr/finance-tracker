@@ -20,7 +20,38 @@ function getMatchingTransactions(entries = [], keywords = [], selectedMonth = nu
     .slice(0, 4);
 }
 
-// Case-insensitive & formatting-agnostic category spend resolver
+function calculateOpportunityCost(monthlyAmount = 0, kiaBalance = 0) {
+  const amt = Number(monthlyAmount) || 0;
+  if (amt <= 0) {
+    return {
+      tenYearWealth: 0,
+      twentyYearWealth: 0,
+      carMonthsSaved: 0,
+      carInterestSaved: 0,
+    };
+  }
+
+  // 1. Compound Wealth at 8% annual return (compounded monthly)
+  // Formula: P * [ (1 + r)^n - 1 ] / r
+  const r = 0.08 / 12;
+  const tenYearWealth = Math.round(amt * ((Math.pow(1 + r, 120) - 1) / r));
+  const twentyYearWealth = Math.round(amt * ((Math.pow(1 + r, 240) - 1) / r));
+
+  // 2. Impact on 12.5% Kia Sportage loan payoff ($800 base payment)
+  const effectiveKia = kiaBalance > 0 ? kiaBalance : 14000;
+  const basePayment = 800;
+  const currentPayoffMonths = Math.ceil(effectiveKia / basePayment);
+  const acceleratedPayoffMonths = Math.ceil(effectiveKia / (basePayment + amt));
+  const carMonthsSaved = Math.max(currentPayoffMonths - acceleratedPayoffMonths, 1);
+  const carInterestSaved = Math.round(effectiveKia * 0.125 * (carMonthsSaved / 12));
+
+  return {
+    tenYearWealth,
+    twentyYearWealth,
+    carMonthsSaved,
+    carInterestSaved,
+  };
+}
 function getCatSpend(categoryTotals = {}, targetKeys = []) {
   const normKeys = targetKeys.map((k) => k.toLowerCase().replace(/[\s_&]+/g, ''));
   for (const [k, val] of Object.entries(categoryTotals)) {
@@ -356,6 +387,11 @@ export function generateOptimizationInsights({
     });
   }
 
+  // Attach True Cost of Spending / Opportunity Cost to each suggestion
+  suggestions.forEach((sug) => {
+    sug.opportunityCost = calculateOpportunityCost(sug.monthlySavings, kiaBalance);
+  });
+
   // Calculate Total Potential Monthly & Annual Savings
   const totalPotentialSavings = suggestions.reduce((sum, s) => sum + s.monthlySavings, 0);
 
@@ -444,6 +480,9 @@ export function generateOptimizationInsights({
       },
       funds: {
         tenYearTotal: tenYearCompound,
+        twentyYearTotal: Math.round(
+          totalPotentialSavings * ((Math.pow(1 + 0.08 / 12, 240) - 1) / (0.08 / 12)),
+        ),
       },
     },
     debtAccelerationMonths: carMonthsSaved,

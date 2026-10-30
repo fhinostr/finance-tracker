@@ -20,8 +20,6 @@ import {
   CheckCircle2,
   Target,
   TrendingDown,
-  Lock,
-  Unlock,
   Info,
   ShieldCheck,
   Scissors,
@@ -29,9 +27,9 @@ import {
   Check,
   X,
   ShieldAlert,
-  Clock,
   ChevronLeft,
   ChevronRight,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   useFinanceData,
@@ -109,6 +107,8 @@ export default function PersonalFinanceTracker() {
     totalFixed,
     totalVariable,
     debts,
+    monthlyBurn,
+    netCashFlow,
     cashSurplus,
     debtSplit,
     savingsSplit,
@@ -181,8 +181,13 @@ export default function PersonalFinanceTracker() {
     const monthDebtSum = monthDebtPayments.reduce((sum, p) => sum + p.amount, 0);
     const debtMonthly = debtList.reduce((sum, d) => sum + (d.minPayment || 0) + (d.extraPayment || 0), 0) || monthDebtSum;
 
-    // Cash flow surplus: deducts unpaid credit card balance as what is owed
-    const surplus = Math.max(net - fixedSum - variableSum - debtMonthly - totalCreditBalance, 0);
+    // Total monthly outgoings (Burn rate)
+    const monthlyBurn = fixedSum + variableSum + debtMonthly;
+    const netCashFlow = net - monthlyBurn; // Actual cash flow (+ surplus or - deficit)
+
+    // Cash flow surplus: positive discretionary cash available for debt acceleration & investments
+    // Deducts unpaid credit card balance as immediate liability
+    const surplus = Math.max(netCashFlow - totalCreditBalance, 0);
     const toDebt = Math.round(surplus * 0.35);
     const toSavings = surplus - toDebt;
 
@@ -203,6 +208,8 @@ export default function PersonalFinanceTracker() {
       totalVariable: variableSum,
       debts: debtList,
       totalDebtAllocation: debtMonthly,
+      monthlyBurn,
+      netCashFlow,
       cashSurplus: surplus,
       debtSplit: toDebt,
       savingsSplit: toSavings,
@@ -423,6 +430,11 @@ export default function PersonalFinanceTracker() {
                 cashSurplus={cashSurplus}
                 debtSplit={debtSplit}
                 savingsSplit={savingsSplit}
+                monthlyBurn={monthlyBurn}
+                netCashFlow={netCashFlow}
+                currentNet={currentNet}
+                totalFixed={totalFixed}
+                debts={debts}
                 entries={entries}
                 linkedAccounts={linkedAccounts}
                 optimization={optimization}
@@ -555,8 +567,13 @@ function DashboardTab({
   categoryTotals,
   budgets,
   cashSurplus,
-  debtSplit,
-  savingsSplit,
+  debtSplit: _debtSplit,
+  savingsSplit: _savingsSplit,
+  monthlyBurn = 0,
+  netCashFlow = 0,
+  currentNet = 0,
+  totalFixed: _totalFixed = 0,
+  debts = [],
   entries,
   linkedAccounts = [],
   optimization,
@@ -592,6 +609,34 @@ function DashboardTab({
     totalCreditBalance,
     totalPortfolioValue,
   } = categorizeAccounts(linkedAccounts);
+
+  // HYSA / Savings Accounts Calculation for Waterfall
+  const savingsAccounts = bankAccounts.filter(
+    (a) =>
+      a.subtype?.toLowerCase().includes('savings') ||
+      a.name?.toLowerCase().includes('savings') ||
+      a.name?.toLowerCase().includes('hysa'),
+  );
+  const totalHysaBalance = savingsAccounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+
+  // Auto Loan / Debt Calculation for Waterfall
+  const kiaDebt = debts.find((d) => {
+    const name = (d.name || '').toLowerCase();
+    return name.includes('kia') || name.includes('sportage') || name.includes('auto') || name.includes('car');
+  }) || debts.find((d) => d.kind === 'debt');
+  const kiaBalance = kiaDebt ? debtBalance(kiaDebt, entries) : 0;
+
+  // Waterfall Tiers Evaluation
+  const hysaTarget = 3000;
+  const isHysaFull = totalHysaBalance >= hysaTarget;
+  const isKiaPaidOff = kiaDebt ? kiaBalance <= 0 : false;
+
+  const currentWaterfallTier = !isHysaFull ? 1 : !isKiaPaidOff ? 2 : 3;
+
+  // Monthly Runway in Weeks (if in deficit)
+  const isDeficit = netCashFlow < 0;
+  const weeklyBurn = (monthlyBurn || 1) / 4.33;
+  const weeksRunway = Math.max(Math.round((totalCashInBank / weeklyBurn) * 10) / 10, 0);
 
   return (
     <div className="space-y-5">
@@ -647,6 +692,100 @@ function DashboardTab({
             {investmentAccounts.length > 0 ? 'Robinhood' : 'Tap to link'}
           </p>
         </button>
+      </div>
+
+      {/* 1. Cash Flow Burn Rate & Runway Bar */}
+      <div
+        className={`p-4 rounded-3xl backdrop-blur-xl border shadow-xl space-y-3 transition-all ${
+          isDeficit
+            ? 'bg-gradient-to-br from-amber-950/40 via-rose-950/20 to-zinc-900/90 border-amber-500/30'
+            : 'bg-gradient-to-br from-emerald-950/40 via-teal-950/20 to-zinc-900/90 border-emerald-500/30'
+        }`}
+      >
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-2.5">
+            <div
+              className={`p-2 rounded-xl border ${
+                isDeficit
+                  ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                  : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+              }`}
+            >
+              {isDeficit ? <AlertTriangle size={18} /> : <TrendingUp size={18} />}
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span
+                  className={`text-[10px] uppercase font-bold tracking-wider ${
+                    isDeficit ? 'text-amber-300' : 'text-emerald-300'
+                  }`}
+                >
+                  {isDeficit ? 'Monthly Cash Flow Deficit' : 'Monthly Cash Flow Surplus'}
+                </span>
+                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-white/10 text-gray-300 border border-white/10">
+                  {formatMonthName(activeMonth)}
+                </span>
+              </div>
+              <p className="text-xl font-extrabold text-white">
+                {isDeficit ? `-${formatMoney(Math.abs(netCashFlow))}` : `+${formatMoney(netCashFlow)}`}
+                <span className="text-xs text-gray-400 font-normal">
+                  {isDeficit ? ' net burn this month' : ' net cash remaining'}
+                </span>
+              </p>
+            </div>
+          </div>
+          <div className="text-right">
+            <span className="text-[10px] uppercase font-bold text-gray-400 block mb-0.5">Liquid Runway</span>
+            <span
+              className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
+                weeksRunway >= 8
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                  : weeksRunway >= 3
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                  : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+              }`}
+            >
+              {isDeficit ? `~${weeksRunway} wks runway` : 'Stable Surplus'}
+            </span>
+          </div>
+        </div>
+
+        {/* Burn Details Progress Meter */}
+        <div className="p-3 bg-black/40 rounded-2xl border border-white/5 space-y-2">
+          <div className="flex justify-between items-center text-xs">
+            <span className="text-gray-400">
+              Total Burn: <strong className="text-white">{formatMoney(monthlyBurn)}</strong> outgoings
+            </span>
+            <span className="text-gray-400">
+              Income: <strong className="text-emerald-400">{formatMoney(currentNet)}</strong>
+            </span>
+          </div>
+          <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden flex">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${
+                isDeficit ? 'bg-gradient-to-r from-amber-500 to-rose-500' : 'bg-gradient-to-r from-emerald-500 to-teal-400'
+              }`}
+              style={{
+                width: `${Math.min(100, Math.round((monthlyBurn / (Math.max(currentNet, monthlyBurn) || 1)) * 100))}%`,
+              }}
+            />
+          </div>
+          <div className="flex justify-between items-center text-[10px] text-gray-400 pt-0.5">
+            <span>Everyday Checking cushion: {formatMoney(totalCashInBank)}</span>
+            <span>
+              {isDeficit
+                ? `Burns ~$${Math.round(weeklyBurn)}/week`
+                : `${Math.round(((currentNet - monthlyBurn) / (currentNet || 1)) * 100)}% savings rate`}
+            </span>
+          </div>
+        </div>
+
+        {isDeficit && (
+          <p className="text-[11px] text-amber-200/90 leading-relaxed bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20">
+            💡 <strong>Variable client hours phase:</strong> Monthly outgoings exceeded deposits by{' '}
+            {formatMoney(Math.abs(netCashFlow))}. Protect your Everyday Checking liquid buffer ({formatMoney(totalCashInBank)}) before deploying extra capital into illiquid investments.
+          </p>
+        )}
       </div>
 
       {/* Connected Accounts Breakdown if any connected */}
@@ -795,21 +934,169 @@ function DashboardTab({
         </button>
       </GlassCard>
 
-      {/* Cash Flow Surplus */}
+      {/* 2. Surplus Routing Waterfall ("Next Best Dollar" Auto-Pilot) */}
       <GlassCard
-        title="Cash Flow Surplus"
-        icon={<PieChart className="text-green-400" />}
+        title="Next Best Dollar Auto-Pilot"
+        icon={<Target className="text-emerald-400" />}
         amount={formatMoney(cashSurplus)}
       >
-        <p className="text-sm text-gray-400 mb-3">Available monthly for debt acceleration and investments.</p>
-        <div className="flex space-x-2">
-          <div className="flex-1 bg-black/40 rounded-xl p-3 border border-white/5">
-            <p className="text-xs text-gray-500 mb-1">To Debt</p>
-            <p className="text-lg font-semibold text-red-400">{formatMoney(debtSplit)}</p>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between text-xs text-gray-400">
+            <span>Discretionary surplus available for wealth building</span>
+            <span className="text-emerald-400 font-bold">+{formatMoney(cashSurplus)} / mo</span>
           </div>
-          <div className="flex-1 bg-black/40 rounded-xl p-3 border border-white/5">
-            <p className="text-xs text-gray-500 mb-1">To Savings</p>
-            <p className="text-lg font-semibold text-green-400">{formatMoney(savingsSplit)}</p>
+
+          {/* 3 Strategic Waterfall Tiers */}
+          <div className="space-y-2.5">
+            {/* Tier 1: $3,000 HYSA Move-In Buffer */}
+            <div
+              className={`p-3 rounded-2xl border transition-all ${
+                currentWaterfallTier === 1
+                  ? 'bg-cyan-950/30 border-cyan-500/40 shadow-lg shadow-cyan-950/50 ring-1 ring-cyan-500/30'
+                  : isHysaFull
+                  ? 'bg-black/30 border-emerald-500/20 opacity-80'
+                  : 'bg-black/30 border-white/5 opacity-60'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md border ${
+                      isHysaFull
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                        : currentWaterfallTier === 1
+                        ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
+                        : 'bg-white/10 text-gray-400 border-white/10'
+                    }`}
+                  >
+                    Tier 1
+                  </span>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-bold text-white">Maryland Move-In Buffer (HYSA)</p>
+                      {isHysaFull ? (
+                        <span className="text-[9px] font-bold text-emerald-400 flex items-center gap-0.5">
+                          <CheckCircle2 size={11} /> Secured
+                        </span>
+                      ) : currentWaterfallTier === 1 ? (
+                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                          Active Priority
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="text-[10px] text-gray-400">
+                      Rockville, MD apartment deposit, advance rent & MVA titling reserve
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-xs font-bold text-white">
+                    {formatMoney(totalHysaBalance)}{' '}
+                    <span className="text-gray-500 text-[10px]">/ ${hysaTarget.toLocaleString()}</span>
+                  </p>
+                  <p className="text-[10px] text-cyan-400 font-semibold">
+                    {Math.min(100, Math.round((totalHysaBalance / hysaTarget) * 100))}%
+                  </p>
+                </div>
+              </div>
+              <div className="mt-2 w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-cyan-400 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(100, Math.round((totalHysaBalance / hysaTarget) * 100))}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Tier 2: 2018 Kia Sportage Loan (12.5% APR) */}
+            <div
+              className={`p-3 rounded-2xl border transition-all ${
+                currentWaterfallTier === 2
+                  ? 'bg-amber-950/30 border-amber-500/40 shadow-lg shadow-amber-950/50 ring-1 ring-amber-500/30'
+                  : isKiaPaidOff
+                  ? 'bg-black/30 border-emerald-500/20 opacity-80'
+                  : 'bg-black/30 border-white/5 opacity-70'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md border ${
+                      isKiaPaidOff
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                        : currentWaterfallTier === 2
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                        : 'bg-white/10 text-gray-400 border-white/10'
+                    }`}
+                  >
+                    Tier 2
+                  </span>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-bold text-white">2018 Kia Sportage (12.5% APR)</p>
+                      {currentWaterfallTier === 2 && (
+                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          Next Target
+                        </span>
+                      )}
+                      {isKiaPaidOff && (
+                        <span className="text-[9px] font-bold text-emerald-400 flex items-center gap-0.5">
+                          <CheckCircle2 size={11} /> Debt Free
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-gray-400">
+                      Direct $800/mo + bonus • Mark extra as PRINCIPAL-ONLY • Hold & pay off (do not lease)
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-xs font-bold text-amber-300">
+                    {kiaBalance > 0 ? formatMoney(kiaBalance) : 'Paid Off'}
+                  </p>
+                  <p className="text-[10px] text-amber-400/80 font-medium">12.5% Guaranteed Return</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Tier 3: Tax-Advantaged Wealth (Roth IRA & Robinhood) */}
+            <div
+              className={`p-3 rounded-2xl border transition-all ${
+                currentWaterfallTier === 3
+                  ? 'bg-emerald-950/30 border-emerald-500/40 shadow-lg shadow-emerald-950/50 ring-1 ring-emerald-500/30'
+                  : 'bg-black/30 border-white/5 opacity-70'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md border ${
+                      currentWaterfallTier === 3
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                        : 'bg-white/10 text-gray-400 border-white/10'
+                    }`}
+                  >
+                    Tier 3
+                  </span>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-bold text-white">Tax-Advantaged Wealth Engine</p>
+                      {currentWaterfallTier === 3 && (
+                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                          Active Wealth Engine
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-gray-400">
+                      Max $7k/yr Roth IRA + Robinhood index funds (VOO/VTI compounding at 8-10%)
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-xs font-bold text-emerald-300">{formatMoney(totalPortfolioValue)}</p>
+                  <p className="text-[10px] text-gray-400">Active Robinhood</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </GlassCard>
@@ -2216,13 +2503,16 @@ function OptimizationTab({
 
           <div className="p-3 bg-black/40 rounded-2xl border border-purple-500/20 space-y-1">
             <div className="flex items-center gap-1.5 text-xs text-purple-300 font-bold">
-              <TrendingUp size={14} /> 10-Yr Wealth Addition
+              <TrendingUp size={14} /> 10-Yr & 20-Yr Wealth
             </div>
             <p className="text-sm font-extrabold text-emerald-400">
-              +{formatMoney(fundsImpact.tenYearTotal)}
+              +{formatMoney(fundsImpact.tenYearTotal)} <span className="text-[10px] text-emerald-300/80 font-semibold">(10y)</span>
+            </p>
+            <p className="text-[11px] font-bold text-emerald-300">
+              +{formatMoney(fundsImpact.twentyYearTotal || Math.round(fundsImpact.tenYearTotal * 3.1))} <span className="text-[9px] text-gray-400 font-normal">(20y @ 8%)</span>
             </p>
             <p className="text-[10px] text-gray-400">
-              Compounded in Robinhood & Roth IRA at 8% annual return.
+              Compounded in Robinhood & Roth IRA index funds.
             </p>
           </div>
         </div>
@@ -2412,6 +2702,41 @@ function OptimizationTab({
                 <p className="text-[11px] text-emerald-400 font-medium flex items-center gap-1.5">
                   <ArrowRight size={12} /> {sug.goalImpact}
                 </p>
+
+                {/* True Cost of Spending / Opportunity Cost Analyzer */}
+                {sug.opportunityCost && sug.monthlySavings > 0 && (
+                  <div className="p-3 bg-gradient-to-br from-indigo-950/40 via-black/50 to-purple-950/30 rounded-2xl border border-indigo-500/25 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-300 flex items-center gap-1">
+                        <Sparkles size={11} /> Opportunity Cost of This Spend
+                      </span>
+                      <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        8% Index Return
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="p-2 rounded-xl bg-black/40 border border-white/5">
+                        <span className="text-gray-400 block text-[10px]">10-Yr Compounded</span>
+                        <span className="font-extrabold text-emerald-400">
+                          +{formatMoney(sug.opportunityCost.tenYearWealth)}
+                        </span>
+                      </div>
+                      <div className="p-2 rounded-xl bg-black/40 border border-white/5">
+                        <span className="text-gray-400 block text-[10px]">20-Yr Compounded</span>
+                        <span className="font-extrabold text-emerald-300">
+                          +{formatMoney(sug.opportunityCost.twentyYearWealth)}
+                        </span>
+                      </div>
+                    </div>
+                    {sug.opportunityCost.carMonthsSaved > 0 && (
+                      <p className="text-[10px] text-amber-200/90 leading-tight">
+                        🏎️ <strong>Kia Payoff Impact:</strong> Reallocating this saves ~
+                        <strong className="text-white">{sug.opportunityCost.carMonthsSaved} mo</strong> of payments &{' '}
+                        <strong className="text-white">{formatMoney(sug.opportunityCost.carInterestSaved)}</strong> in 12.5% loan interest.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {/* 1-Click Action Button */}
                 <div className="pt-1">
