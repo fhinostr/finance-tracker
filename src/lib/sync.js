@@ -4,6 +4,95 @@ const STORAGE_KEY_MAIN = 'finance-tracker:v2';
 const STORAGE_KEY_ACCOUNTS = 'finance-tracker:linked-accounts:v1';
 const STORAGE_KEY_PLAID = 'finance-tracker:plaid-config:v1';
 const STORAGE_KEY_SYNC_TIME = 'finance-tracker:last-cloud-sync';
+const STORAGE_KEY_SYNC_TOPIC = 'finance-tracker:sync-topic';
+
+export const DEFAULT_SYNC_TOPIC = 'fhinostr_wealth_sync';
+
+export function getSyncTopic() {
+  try {
+    return localStorage.getItem(STORAGE_KEY_SYNC_TOPIC) || DEFAULT_SYNC_TOPIC;
+  } catch {
+    return DEFAULT_SYNC_TOPIC;
+  }
+}
+
+export function saveSyncTopic(topic) {
+  try {
+    const clean = (topic || DEFAULT_SYNC_TOPIC).trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+    localStorage.setItem(STORAGE_KEY_SYNC_TOPIC, clean || DEFAULT_SYNC_TOPIC);
+    return clean || DEFAULT_SYNC_TOPIC;
+  } catch {
+    return DEFAULT_SYNC_TOPIC;
+  }
+}
+
+/**
+ * Pushes the current local data snapshot to the secure cloud relay.
+ */
+export async function pushSyncToRelay(topic = getSyncTopic()) {
+  const snapshot = getLocalSnapshot();
+  const payloadStr = JSON.stringify(snapshot);
+
+  const res = await fetch(`https://ntfy.sh/${topic}`, {
+    method: 'POST',
+    headers: {
+      Title: 'Finance Sync',
+      Tags: 'sync',
+      Priority: 'urgent',
+    },
+    body: payloadStr,
+  });
+
+  if (!res.ok) {
+    throw new Error(`Sync relay push failed with status ${res.status}`);
+  }
+
+  localStorage.setItem(STORAGE_KEY_SYNC_TIME, String(Date.now()));
+  return { success: true, timestamp: Date.now() };
+}
+
+/**
+ * Pulls the latest data snapshot from the cloud relay.
+ */
+export async function pullSyncFromRelay(topic = getSyncTopic()) {
+  const res = await fetch(`https://ntfy.sh/${topic}/json?poll=1`);
+  if (!res.ok) {
+    throw new Error(`Sync relay poll failed with status ${res.status}`);
+  }
+
+  const rawText = await res.text();
+  const lines = rawText.trim().split('\n').filter(Boolean);
+  if (lines.length === 0) {
+    throw new Error('No sync data found on cloud channel yet. Push from your laptop first.');
+  }
+
+  // Parse latest message event
+  for (let i = lines.length - 1; i >= 0; i--) {
+    try {
+      const parsed = JSON.parse(lines[i]);
+      if (parsed.message) {
+        const snapshot = JSON.parse(parsed.message);
+        if (snapshot && typeof snapshot === 'object' && (snapshot.accounts || snapshot.main)) {
+          applyLocalSnapshot(snapshot);
+          return { success: true, snapshot };
+        }
+      }
+    } catch {
+      // continue searching backwards
+    }
+  }
+
+  throw new Error('Unable to parse data from sync relay');
+}
+
+/**
+ * Generates an ultra-short, reliable sync URL (only ~55 chars) for QR codes.
+ */
+export function generateRelaySyncUrl(topic = getSyncTopic()) {
+  const origin = window.location.origin;
+  const pathname = window.location.pathname;
+  return `${origin}${pathname}#sync-code=${topic}`;
+}
 
 /**
  * Compresses an arbitrary JS object into a compact, URL-safe Base64 string.
@@ -141,25 +230,45 @@ export async function generateSyncUrl() {
 
 /**
  * Checks on application startup if a sync hash is present in the URL.
- * If found, applies it automatically and clears the hash.
+ * Supports both #sync-code=<topic> (cloud relay) and #sync=<compressed> (direct payload).
  */
 export async function checkAndApplyUrlSync() {
   if (typeof window === 'undefined') return null;
   const hash = window.location.hash || '';
-  if (!hash.startsWith('#sync=')) return null;
 
-  try {
-    const payloadStr = hash.replace(/^#sync=/, '');
-    const snapshot = await decompressData(payloadStr);
-    const success = applyLocalSnapshot(snapshot);
-    if (success) {
-      // Clean URL hash without triggering page reload
-      window.history.replaceState(null, '', window.location.pathname + window.location.search);
-      return snapshot;
+  // 1. Cloud Relay Sync Code (#sync-code=...)
+  if (hash.startsWith('#sync-code=')) {
+    try {
+      const topic = hash.replace(/^#sync-code=/, '').trim();
+      if (topic) {
+        saveSyncTopic(topic);
+        const res = await pullSyncFromRelay(topic);
+        if (res?.success) {
+          window.history.replaceState(null, '', window.location.pathname + window.location.search);
+          return res.snapshot;
+        }
+      }
+    } catch (err) {
+      console.error('URL Sync-Code error:', err);
     }
-  } catch (err) {
-    console.error('URL Sync error:', err);
+    return null;
   }
+
+  // 2. Direct Compressed URL Payload (#sync=...)
+  if (hash.startsWith('#sync=')) {
+    try {
+      const payloadStr = hash.replace(/^#sync=/, '');
+      const snapshot = await decompressData(payloadStr);
+      const success = applyLocalSnapshot(snapshot);
+      if (success) {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        return snapshot;
+      }
+    } catch (err) {
+      console.error('URL Sync error:', err);
+    }
+  }
+
   return null;
 }
 
