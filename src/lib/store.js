@@ -84,6 +84,91 @@ export const EXPENSE_CATEGORIES = [
   'Other',
 ];
 
+/**
+ * Intelligent Gas & Fuel Recognizer:
+ * Detects gas station brands (7-Eleven, Wawa, Sheetz, Speedway, Shell, Chevron, etc.)
+ * where transactions >= $20 represent gas fill-ups rather than convenience store snacks.
+ */
+export function isGasTransaction(name = '', amount = 0, currentCat = '') {
+  const n = String(name || '').toLowerCase();
+  const amt = Number(amount) || 0;
+  const cat = String(currentCat || '').toLowerCase();
+
+  if (cat.includes('gas') || cat.includes('fuel')) return true;
+
+  const gasStationBrands = [
+    '7-eleven',
+    '7 eleven',
+    '7eleven',
+    'wawa',
+    'sheetz',
+    'circle k',
+    'racetrac',
+    'quiktrip',
+    'qt ',
+    'bucc-ee',
+    'buc-ee',
+    'cumberland farms',
+    'speedway',
+    'sunoco',
+    'exxon',
+    'mobil',
+    'shell',
+    'chevron',
+    'bp ',
+    'citgo',
+    'valero',
+    'marathon',
+    'phillips 66',
+    'conoco',
+    'gulf',
+    'sinclair',
+    'arco',
+    'casey',
+    'murphy usa',
+    'murphy express',
+    'pilot flying j',
+    'loves travel',
+    "love's",
+    'ta travel',
+    'thorntons',
+    'kum & go',
+    'kum and go',
+    'holiday station',
+    'royal farms',
+    'kroger fuel',
+    'costco gas',
+    'sam\'s club gas',
+    'sams club gas',
+    'bj\'s gas',
+    'bjs gas',
+  ];
+
+  const hasGasStation = gasStationBrands.some((brand) => n.includes(brand));
+  const hasGasKeyword =
+    n.includes('gas') ||
+    n.includes('fuel') ||
+    n.includes('petro') ||
+    n.includes('oil co') ||
+    n.includes('pump');
+
+  // Charges over $20 at known gas/convenience stations are gas fill-ups
+  if ((hasGasStation && amt >= 20) || hasGasKeyword) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Resolves normalized category, upgrading convenience store fuel charges to 'Gas'
+ */
+export function normalizeCategory(category = 'Other', name = '', amount = 0) {
+  if (isGasTransaction(name, amount, category)) {
+    return 'Gas';
+  }
+  return category;
+}
+
 export function getCategoryStyle(category = '', kind = 'expense') {
   if (kind === 'income') {
     return {
@@ -230,7 +315,14 @@ function load() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed?.entries)) return parsed;
+      if (Array.isArray(parsed?.entries)) {
+        // Automatically ensure gas station transactions (7-Eleven, Wawa, etc >= $20) are categorized as Gas
+        const normalizedEntries = parsed.entries.map((e) => {
+          const cat = normalizeCategory(e.category || 'Other', e.name, e.amount);
+          return cat !== e.category ? { ...e, category: cat } : e;
+        });
+        return { ...parsed, entries: normalizedEntries };
+      }
     }
   } catch {
     // fallback
@@ -269,7 +361,12 @@ export function useFinanceData() {
   }, [data]);
 
   const addEntry = useCallback((entry) => {
-    setData((d) => ({ ...d, entries: [{ id: uid(), date: toISODate(), ...entry }, ...d.entries] }));
+    const rawCat = entry.category || 'Other';
+    const finalCat = normalizeCategory(rawCat, entry.name, entry.amount);
+    setData((d) => ({
+      ...d,
+      entries: [{ id: uid(), date: toISODate(), ...entry, category: finalCat }, ...d.entries],
+    }));
   }, []);
 
   const addEntries = useCallback((newItems) => {
@@ -287,12 +384,14 @@ export function useFinanceData() {
           !isDuplicate &&
           !toAdd.some((t) => t.name === item.name && Math.abs(t.amount - item.amount) < 0.01 && t.date === item.date)
         ) {
+          const rawCat = item.category || 'Other';
+          const finalCat = normalizeCategory(rawCat, item.name, item.amount);
           toAdd.push({
             id: item.id || uid(),
             kind: item.kind || 'expense',
             name: item.name,
             amount: Number(item.amount) || 0,
-            category: item.category || 'Other',
+            category: finalCat,
             frequency: item.frequency || 'one-time',
             date: item.date || toISODate(),
             pending: Boolean(item.pending),

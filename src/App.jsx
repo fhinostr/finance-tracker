@@ -44,6 +44,7 @@ import {
   saveStoredAccounts,
   categorizeAccounts,
   getCategoryStyle,
+  normalizeCategory,
 } from './lib/store.js';
 import { generateOptimizationInsights } from './lib/optimization.js';
 import AddEntrySheet from './components/AddEntrySheet.jsx';
@@ -185,10 +186,10 @@ export default function PersonalFinanceTracker() {
     const toDebt = Math.round(surplus * 0.35);
     const toSavings = surplus - toDebt;
 
-    // Spending by category for variable expenses in this active month
+    // Spending by category for variable expenses in this active month (with gas recognition)
     const catMap = {};
     for (const exp of variable) {
-      const cat = exp.category || 'Other';
+      const cat = normalizeCategory(exp.category || 'Other', exp.name, exp.amount);
       catMap[cat] = (catMap[cat] || 0) + exp.amount;
     }
 
@@ -831,7 +832,8 @@ function DashboardTab({
           <div className="space-y-2 mt-2">
             {displayedTransactions.map((item) => {
               const isIncome = item.kind === 'income';
-              const catStyle = getCategoryStyle(item.category || item.kind, item.kind);
+              const resolvedCat = normalizeCategory(item.category || item.kind, item.name, item.amount);
+              const catStyle = getCategoryStyle(resolvedCat, item.kind);
               return (
                 <div
                   key={item.id}
@@ -842,7 +844,7 @@ function DashboardTab({
                       <span
                         className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-md border ${catStyle.bg} ${catStyle.text} ${catStyle.border}`}
                       >
-                        {item.kind === 'payment' ? 'Debt Pay' : formatCategory(item.category || item.kind)}
+                        {item.kind === 'payment' ? 'Debt Pay' : formatCategory(resolvedCat)}
                       </span>
                       {item.pending && (
                         <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">

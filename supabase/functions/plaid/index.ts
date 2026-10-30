@@ -251,6 +251,20 @@ Deno.serve(async (req) => {
           const primaryCat = tx.personal_finance_category?.primary || tx.category?.[0] || 'Other';
           const catLower = primaryCat.toLowerCase();
           const nameLower = (tx.merchant_name || tx.name || '').toLowerCase();
+          const txAmount = Math.abs(tx.amount);
+
+          // Intelligent Gas & Fuel Recognizer (7-Eleven, Wawa, Speedway, etc. >= $20 are gas fill-ups)
+          const gasStationBrands = [
+            '7-eleven', '7 eleven', '7eleven', 'wawa', 'sheetz', 'circle k', 'racetrac',
+            'quiktrip', 'qt ', 'bucc-ee', 'buc-ee', 'cumberland farms', 'speedway',
+            'sunoco', 'exxon', 'mobil', 'shell', 'chevron', 'bp ', 'citgo', 'valero',
+            'marathon', 'phillips 66', 'conoco', 'gulf', 'sinclair', 'arco', 'casey',
+            'murphy usa', 'murphy express', 'pilot flying j', 'loves travel', "love's",
+            'ta travel', 'thorntons', 'kum & go', 'royal farms', 'kroger fuel', 'costco gas',
+          ];
+          const hasGasBrand = gasStationBrands.some((b) => nameLower.includes(b));
+          const hasGasKeyword = nameLower.includes('gas') || nameLower.includes('fuel') || nameLower.includes('petro');
+          const finalCategory = (hasGasBrand && txAmount >= 20) || hasGasKeyword ? 'Gas' : primaryCat;
 
           const isTransferOrPayment =
             catLower.includes('loan_payments') ||
@@ -276,9 +290,9 @@ Deno.serve(async (req) => {
           return {
             id: tx.transaction_id,
             name: tx.merchant_name || tx.name,
-            amount: Math.abs(tx.amount),
+            amount: txAmount,
             kind,
-            category: primaryCat,
+            category: finalCategory,
             date: tx.authorized_date || tx.date,
             pending: Boolean(tx.pending),
             accountId: tx.account_id,
