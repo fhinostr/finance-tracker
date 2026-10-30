@@ -6,5 +6,8 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   // Relative base so the build works when served from a GitHub Pages subpath
   base: './',
+  server: {
+    host: true, // Exposes the server on local network (e.g., http://192.168.1.137:5173)
+  },
   plugins: [react(), tailwindcss()],
 })
