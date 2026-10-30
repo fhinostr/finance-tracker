@@ -750,7 +750,8 @@ function DashboardTab({
           ) : (
             allCategories.map((cat) => {
               const spent = categoryTotals[cat] || 0;
-              const max = budgets[cat] || spent || 100;
+              const hasBudget = budgets[cat] != null && budgets[cat] > 0;
+              const max = hasBudget ? budgets[cat] : (totalVariable > 0 ? totalVariable : spent || 100);
               const catStyle = getCategoryStyle(cat);
               return (
                 <ProgressBar
@@ -759,6 +760,7 @@ function DashboardTab({
                   current={spent}
                   max={max}
                   color={catStyle.bar}
+                  hasExplicitBudget={hasBudget}
                 />
               );
             })
@@ -2204,6 +2206,29 @@ function OptimizationTab({
           </div>
         </div>
 
+        {/* Breakdown Summary: Cut This Out vs Spend Less Here */}
+        <div className="grid grid-cols-2 gap-2 p-2.5 rounded-2xl bg-black/50 border border-white/5 text-xs">
+          <div className="p-2 rounded-xl bg-rose-500/10 border border-rose-500/20">
+            <div className="flex items-center gap-1 text-[11px] font-bold text-rose-300 mb-0.5">
+              <Scissors size={12} /> Cut This Out ({optimization.cutOutSuggestions?.length || 0})
+            </div>
+            <p className="text-sm font-extrabold text-white">
+              +{formatMoney(optimization.cutOutSuggestions?.reduce((s, x) => s + x.monthlySavings, 0) || 0)}/mo
+            </p>
+            <p className="text-[10px] text-gray-400">100% avoidable waste & unessential transfers</p>
+          </div>
+
+          <div className="p-2 rounded-xl bg-blue-500/10 border border-blue-500/20">
+            <div className="flex items-center gap-1 text-[11px] font-bold text-blue-300 mb-0.5">
+              <TrendingDown size={12} /> Spend Less Here ({optimization.spendLessSuggestions?.length || 0})
+            </div>
+            <p className="text-sm font-extrabold text-white">
+              +{formatMoney(optimization.spendLessSuggestions?.reduce((s, x) => s + x.monthlySavings, 0) || 0)}/mo
+            </p>
+            <p className="text-[10px] text-gray-400">Discretionary retail, dining & transport caps</p>
+          </div>
+        </div>
+
         <button
           onClick={handleApplyAll}
           className="w-full py-3 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/25 active:scale-95 transition-all"
@@ -2477,11 +2502,11 @@ function GlassCard({ title, amount, icon, children }) {
   );
 }
 
-function ProgressBar({ label, current, max, color = 'bg-white' }) {
+function ProgressBar({ label, current, max, color = 'bg-white', hasExplicitBudget = false }) {
   const safeMax = max > 0 ? max : 1;
   const percentage = Math.min((current / safeMax) * 100, 100);
-  const isOver = current > max && max > 0;
-  const isNear = max > 0 && current / max >= 0.85;
+  const isOver = hasExplicitBudget && current > max && max > 0;
+  const isNear = hasExplicitBudget && max > 0 && current / max >= 0.85;
   const barColor = isOver ? 'bg-red-400' : isNear ? 'bg-amber-400' : color;
 
   return (
@@ -2489,8 +2514,14 @@ function ProgressBar({ label, current, max, color = 'bg-white' }) {
       <div className="flex justify-between text-xs font-medium">
         <span className="text-gray-400">{label}</span>
         <span className={isOver ? 'text-red-400 font-semibold' : 'text-gray-200'}>
-          ${Math.round(current).toLocaleString()} / ${Math.round(max).toLocaleString()}
-          {isOver && <span className="ml-1 text-[10px] text-red-400 font-bold">(Over Cap)</span>}
+          {hasExplicitBudget ? (
+            <>
+              ${Math.round(current).toLocaleString()} / ${Math.round(max).toLocaleString()}
+              {isOver && <span className="ml-1 text-[10px] text-red-400 font-bold">(Over Cap)</span>}
+            </>
+          ) : (
+            <span>${Math.round(current).toLocaleString()} spent</span>
+          )}
         </span>
       </div>
       <div className="h-2.5 bg-black/40 rounded-full overflow-hidden border border-white/5">
