@@ -30,6 +30,7 @@ import {
   ChevronLeft,
   ChevronRight,
   AlertTriangle,
+  Smartphone,
 } from 'lucide-react';
 import {
   useFinanceData,
@@ -47,6 +48,8 @@ import {
 import { generateOptimizationInsights } from './lib/optimization.js';
 import AddEntrySheet from './components/AddEntrySheet.jsx';
 import LinkedAccountsModal from './components/LinkedAccountsModal.jsx';
+import SyncDevicesModal from './components/SyncDevicesModal.jsx';
+import { checkAndApplyUrlSync } from './lib/sync.js';
 
 const springAnim = {
   type: 'spring',
@@ -59,14 +62,35 @@ export default function PersonalFinanceTracker() {
   const [includeBonus, setIncludeBonus] = useState(false);
   const [sheet, setSheet] = useState({ isOpen: false, autoListen: false });
   const [showLinkedModal, setShowLinkedModal] = useState(false);
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [syncToast, setSyncToast] = useState('');
   const [linkedAccounts, setLinkedAccounts] = useState(getStoredAccounts);
 
   useEffect(() => {
+    // Check if user opened this page via a device sync link (#sync=...)
+    checkAndApplyUrlSync().then((snapshot) => {
+      if (snapshot) {
+        setLinkedAccounts(getStoredAccounts());
+        setSyncToast('✓ Synced all accounts, balances & transactions from your laptop!');
+        setTimeout(() => setSyncToast(''), 6000);
+      }
+    });
+
     const handleUpdate = () => {
       setLinkedAccounts(getStoredAccounts());
     };
+    const handleDataSynced = () => {
+      setLinkedAccounts(getStoredAccounts());
+      setSyncToast('✓ Synced latest updates across your devices!');
+      setTimeout(() => setSyncToast(''), 5000);
+    };
+
     window.addEventListener('finance-tracker:accounts-updated', handleUpdate);
-    return () => window.removeEventListener('finance-tracker:accounts-updated', handleUpdate);
+    window.addEventListener('finance-tracker:data-synced', handleDataSynced);
+    return () => {
+      window.removeEventListener('finance-tracker:accounts-updated', handleUpdate);
+      window.removeEventListener('finance-tracker:data-synced', handleDataSynced);
+    };
   }, []);
 
   const { entries, budgets, addEntry, addEntries, updateBudget, setAllBudgets, removeEntry } = useFinanceData();
@@ -284,6 +308,14 @@ export default function PersonalFinanceTracker() {
           </div>
           <div className="flex items-center gap-2">
             <button
+              onClick={() => setShowSyncModal(true)}
+              title="Sync to Phone & Devices"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-emerald-500/15 hover:bg-emerald-500/25 active:scale-95 transition-all backdrop-blur-md border border-emerald-500/30 text-xs font-semibold text-emerald-300 shadow-lg"
+            >
+              <Smartphone className="text-emerald-400" size={15} />
+              <span className="hidden sm:inline">Sync Phone</span>
+            </button>
+            <button
               onClick={() => {
                 setLinkedAccounts(getStoredAccounts());
                 setShowLinkedModal(true);
@@ -303,6 +335,19 @@ export default function PersonalFinanceTracker() {
             </button>
           </div>
         </motion.header>
+
+        {/* Sync Success Notification Toast */}
+        {syncToast && (
+          <div className="p-3 bg-emerald-500/20 border border-emerald-500/40 rounded-2xl text-xs font-semibold text-emerald-200 flex items-center justify-between shadow-xl backdrop-blur-xl animate-fade-in">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+              <span>{syncToast}</span>
+            </div>
+            <button onClick={() => setSyncToast('')} className="text-gray-400 hover:text-white p-1">
+              <X size={14} />
+            </button>
+          </div>
+        )}
 
         {/* Month Discretization Navigator */}
         <div className="p-2.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xl shadow-lg space-y-1.5">
@@ -444,6 +489,7 @@ export default function PersonalFinanceTracker() {
                   setLinkedAccounts(getStoredAccounts());
                   setShowLinkedModal(true);
                 }}
+                onOpenSync={() => setShowSyncModal(true)}
                 onDelete={removeEntry}
                 onAdd={() => openAdd(false)}
               />
@@ -536,6 +582,19 @@ export default function PersonalFinanceTracker() {
         )}
       </AnimatePresence>
 
+      {/* Sync to Phone & Devices Modal */}
+      <AnimatePresence>
+        {showSyncModal && (
+          <SyncDevicesModal
+            isOpen={showSyncModal}
+            onClose={() => setShowSyncModal(false)}
+            onDataRestored={() => {
+              setLinkedAccounts(getStoredAccounts());
+            }}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Add / Dictate Modal Sheet */}
       <AnimatePresence>
         {sheet.isOpen && (
@@ -580,6 +639,7 @@ function DashboardTab({
   activeMonth,
   onNavigateTab,
   onOpenLink,
+  onOpenSync,
   onDelete,
   onAdd,
 }) {
@@ -853,12 +913,20 @@ function DashboardTab({
               );
             })}
           </div>
-          <button
-            onClick={onOpenLink}
-            className="mt-2 w-full py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-medium text-gray-300 transition-colors"
-          >
-            Manage & Sync Accounts
-          </button>
+          <div className="mt-2.5 flex gap-2">
+            <button
+              onClick={onOpenLink}
+              className="flex-1 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-medium text-gray-300 transition-colors"
+            >
+              Manage Accounts
+            </button>
+            <button
+              onClick={onOpenSync}
+              className="flex-1 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-xs font-semibold text-emerald-300 flex items-center justify-center gap-1.5 transition-colors active:scale-95"
+            >
+              <Smartphone size={13} /> Sync to Phone
+            </button>
+          </div>
         </GlassCard>
       )}
 

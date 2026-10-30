@@ -28,3 +28,4 @@
   <!-- Wealth Emblem: Stylized Emerald Dollar Glyph -->
   <text x="256" y="340" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif" font-size="260" font-weight="900" text-anchor="middle" fill="url(#accent)" filter="url(#glow)">$</text>
 </svg>
+
