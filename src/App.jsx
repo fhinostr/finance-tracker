@@ -652,48 +652,67 @@ function DashboardTab({
       {/* Connected Accounts Breakdown if any connected */}
       {linkedAccounts.length > 0 && (
         <GlassCard
-          title="Connected Balances"
+          title="Connected Net Liquid Balances"
           icon={<Building2 className="text-blue-400" />}
-          amount={formatMoney(totalCashInBank + totalPortfolioValue)}
+          amount={formatMoney(totalCashInBank + totalPortfolioValue - totalCreditBalance)}
         >
           <div className="space-y-2">
-            {linkedAccounts.map((acc) => (
-              <div
-                key={acc.id}
-                className="flex items-center justify-between p-2.5 bg-black/30 rounded-xl border border-white/5"
-              >
-                <div className="flex items-center gap-2.5">
-                  <div
-                    className={`p-1.5 rounded-lg ${
-                      acc.type === 'investment'
-                        ? 'bg-emerald-500/20 text-emerald-400'
-                        : acc.type === 'credit'
-                        ? 'bg-amber-500/20 text-amber-400'
-                        : 'bg-blue-500/20 text-blue-400'
-                    }`}
-                  >
-                    {acc.type === 'investment' ? (
-                      <TrendingUp size={14} />
-                    ) : acc.type === 'credit' ? (
-                      <CreditCard size={14} />
-                    ) : (
-                      <Building2 size={14} />
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-white">{acc.name}</p>
-                    <p className="text-[10px] text-gray-500">••••{acc.mask}</p>
-                  </div>
-                </div>
-                <span
-                  className={`text-xs font-bold ${
-                    acc.type === 'credit' ? 'text-amber-300' : 'text-white'
+            {linkedAccounts.map((acc) => {
+              const isCredit = acc.type === 'credit';
+              return (
+                <div
+                  key={acc.id}
+                  className={`flex items-center justify-between p-2.5 rounded-xl border ${
+                    isCredit
+                      ? 'bg-amber-950/20 border-amber-500/25'
+                      : 'bg-black/30 border-white/5'
                   }`}
                 >
-                  {formatMoney(acc.balance)}
-                </span>
-              </div>
-            ))}
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className={`p-1.5 rounded-lg ${
+                        acc.type === 'investment'
+                          ? 'bg-emerald-500/20 text-emerald-400'
+                          : isCredit
+                          ? 'bg-amber-500/20 text-amber-400'
+                          : 'bg-blue-500/20 text-blue-400'
+                      }`}
+                    >
+                      {acc.type === 'investment' ? (
+                        <TrendingUp size={14} />
+                      ) : isCredit ? (
+                        <CreditCard size={14} />
+                      ) : (
+                        <Building2 size={14} />
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-xs font-semibold text-white">{acc.name}</p>
+                        {isCredit && (
+                          <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase">
+                            Debt Owed
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-gray-500">••••{acc.mask}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span
+                      className={`text-xs font-bold ${
+                        isCredit ? 'text-amber-300' : 'text-white'
+                      }`}
+                    >
+                      {isCredit ? `-${formatMoney(acc.balance)}` : formatMoney(acc.balance)}
+                    </span>
+                    {isCredit && (
+                      <span className="block text-[9px] text-amber-400/80 font-medium">Liability</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
           <button
             onClick={onOpenLink}

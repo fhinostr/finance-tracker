@@ -728,7 +728,10 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
                     ) : (
                       <div className="flex items-center gap-2 mt-0.5">
                         <p className="text-xs text-gray-400">
-                          Balance: <span className="text-white font-medium">{formatMoney(acc.balance)}</span>
+                          {acc.type === 'credit' ? 'Balance Owed (Debt): ' : 'Balance: '}
+                          <span className={acc.type === 'credit' ? 'text-amber-300 font-semibold' : 'text-white font-medium'}>
+                            {acc.type === 'credit' ? `-${formatMoney(acc.balance)}` : formatMoney(acc.balance)}
+                          </span>
                         </p>
                         <button
                           type="button"
