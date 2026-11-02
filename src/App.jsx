@@ -30,6 +30,7 @@ import {
   ChevronRight,
   Smartphone,
   Compass,
+  Layers,
 } from 'lucide-react';
 import {
   useFinanceData,
@@ -53,6 +54,10 @@ import TakeHomeWaterfall from './components/TakeHomeWaterfall.jsx';
 import AcceleratedPrincipalPaydown from './components/AcceleratedPrincipalPaydown.jsx';
 import BifurcatedFoodTracker from './components/BifurcatedFoodTracker.jsx';
 import RelocationBufferRing from './components/RelocationBufferRing.jsx';
+import TaxShieldSlider from './components/TaxShieldSlider.jsx';
+import KiaPayoffGauge from './components/KiaPayoffGauge.jsx';
+import WaterfallCashFlow from './components/WaterfallCashFlow.jsx';
+import RelocationGoalWidget from './components/RelocationGoalWidget.jsx';
 import { useSavingsSync } from './lib/useSavingsSync.js';
 import WindfallInterceptorModal from './components/WindfallInterceptorModal.jsx';
 import { checkAndApplyUrlSync } from './lib/sync.js';
@@ -2344,7 +2349,7 @@ function OptimizationTab({
   onTriggerWindfall,
   onAddFoodEntry,
 }) {
-  const [subTab, setSubTab] = useState('behavioral'); // 'behavioral' | 'budget_caps'
+  const [subTab, setSubTab] = useState('simulators'); // 'simulators' | 'behavioral' | 'budget_caps'
   const [appliedAll, setAppliedAll] = useState(false);
   const [appliedCategory, setAppliedCategory] = useState({});
   const [activeFilter, setActiveFilter] = useState('all'); // 'all', 'cut', 'reduce'
@@ -2378,24 +2383,36 @@ function OptimizationTab({
 
   return (
     <div className="space-y-5">
-      {/* View Switcher: Behavioral Execution Engine vs Spending Trim */}
-      <div className="flex bg-zinc-900/90 backdrop-blur-xl p-1.5 rounded-2xl border border-zinc-800 shadow-xl">
+      {/* View Switcher: Interactive Simulators vs Behavioral Engine vs Spending Trim */}
+      <div className="flex bg-zinc-900/90 backdrop-blur-xl p-1.5 rounded-2xl border border-zinc-800 shadow-xl overflow-x-auto no-scrollbar">
+        <button
+          type="button"
+          onClick={() => setSubTab('simulators')}
+          className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+            subTab === 'simulators'
+              ? 'bg-gradient-to-r from-amber-500 to-indigo-600 text-white shadow-lg'
+              : 'text-zinc-400 hover:text-white'
+          }`}
+        >
+          <Sparkles size={14} className="text-yellow-300" />
+          <span>Interactive Simulators</span>
+        </button>
         <button
           type="button"
           onClick={() => setSubTab('behavioral')}
-          className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+          className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
             subTab === 'behavioral'
               ? 'bg-gradient-to-r from-emerald-500 to-indigo-600 text-white shadow-lg'
               : 'text-zinc-400 hover:text-white'
           }`}
         >
-          <Sparkles size={14} className="text-yellow-300" />
-          <span>Behavioral Engine (Phases 1-4)</span>
+          <Layers size={14} />
+          <span>Behavioral Engine</span>
         </button>
         <button
           type="button"
           onClick={() => setSubTab('budget_caps')}
-          className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+          className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
             subTab === 'budget_caps'
               ? 'bg-white text-black shadow-lg'
               : 'text-zinc-400 hover:text-white'
@@ -2406,7 +2423,21 @@ function OptimizationTab({
         </button>
       </div>
 
-      {subTab === 'behavioral' ? (
+      {subTab === 'simulators' ? (
+        <div className="space-y-6">
+          {/* 1. Tax Shield Slider */}
+          <TaxShieldSlider annualSalary={90000} marginalTaxRate={0.30} />
+
+          {/* 2. Kia Payoff Gauge */}
+          <KiaPayoffGauge loanBalance={9000} annualApr={0.125} baseMinPayment={230} />
+
+          {/* 3. Waterfall Cash Flow */}
+          <WaterfallCashFlow netIncome={5160} rentExpense={2000} groceryExpense={330} />
+
+          {/* 4. Relocation Goal Widget */}
+          <RelocationGoalWidget cap={3000} emergencyTarget={10000} />
+        </div>
+      ) : subTab === 'behavioral' ? (
         <div className="space-y-6">
           {/* Active Behavioral Overview & Windfall Interceptor Test CTA */}
           <div className="p-4 rounded-3xl bg-gradient-to-r from-amber-500/15 via-zinc-900 to-indigo-950/40 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xl">
