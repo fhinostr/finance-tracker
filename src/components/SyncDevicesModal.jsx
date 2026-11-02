@@ -24,7 +24,8 @@ import {
 
 export default function SyncDevicesModal({ isOpen, onClose, onDataRestored }) {
   const [topic, setTopic] = useState(() => getSyncTopic());
-  const [syncUrl, setSyncUrl] = useState('');
+  const currentTopic = topic || getSyncTopic();
+  const syncUrl = useMemo(() => generateRelaySyncUrl(currentTopic), [currentTopic]);
   const [qrCodeUrl, setQrCodeUrl] = useState('');
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -34,13 +35,8 @@ export default function SyncDevicesModal({ isOpen, onClose, onDataRestored }) {
   useEffect(() => {
     if (!isOpen) return;
 
-    const currentTopic = getSyncTopic();
-    setTopic(currentTopic);
-    const url = generateRelaySyncUrl(currentTopic);
-    setSyncUrl(url);
-
     // 1. Instantly generate crisp QR Code (short 55-char URL generates in ~2ms!)
-    QRCode.toDataURL(url, {
+    QRCode.toDataURL(syncUrl, {
       width: 320,
       margin: 1.5,
       errorCorrectionLevel: 'L',
@@ -60,7 +56,7 @@ export default function SyncDevicesModal({ isOpen, onClose, onDataRestored }) {
     pushSyncToRelay(currentTopic).catch((err) => {
       console.warn('Background sync push note:', err.message);
     });
-  }, [isOpen]);
+  }, [isOpen, currentTopic, syncUrl]);
 
   if (!isOpen) return null;
 

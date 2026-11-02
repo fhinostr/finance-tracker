@@ -19,7 +19,6 @@ import {
   Edit2,
   Check,
   PiggyBank,
-  HelpCircle,
 } from 'lucide-react';
 import { formatMoney, getStoredAccounts, saveStoredAccounts } from '../lib/store.js';
 import {

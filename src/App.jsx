@@ -49,6 +49,12 @@ import { generateOptimizationInsights } from './lib/optimization.js';
 import AddEntrySheet from './components/AddEntrySheet.jsx';
 import LinkedAccountsModal from './components/LinkedAccountsModal.jsx';
 import SyncDevicesModal from './components/SyncDevicesModal.jsx';
+import TakeHomeWaterfall from './components/TakeHomeWaterfall.jsx';
+import AcceleratedPrincipalPaydown from './components/AcceleratedPrincipalPaydown.jsx';
+import BifurcatedFoodTracker from './components/BifurcatedFoodTracker.jsx';
+import RelocationBufferRing from './components/RelocationBufferRing.jsx';
+import { useSavingsSync } from './lib/useSavingsSync.js';
+import WindfallInterceptorModal from './components/WindfallInterceptorModal.jsx';
 import { checkAndApplyUrlSync } from './lib/sync.js';
 
 const springAnim = {
@@ -65,6 +71,54 @@ export default function PersonalFinanceTracker() {
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [syncToast, setSyncToast] = useState('');
   const [linkedAccounts, setLinkedAccounts] = useState(getStoredAccounts);
+
+  // Behavioral Execution & Windfall Interceptor state (Gemini Recommendations)
+  const [isWindfallModalOpen, setIsWindfallModalOpen] = useState(false);
+  const [windfallData, setWindfallData] = useState({
+    amount: 980,
+    source: 'Corporate Bonus / Anomaly Deposit',
+  });
+  const [vehicleLoanBalance, setVehicleLoanBalance] = useState(() => {
+    const saved = localStorage.getItem('behavioral_vehicle_loan');
+    return saved !== null ? Number(saved) : 9000;
+  });
+  const relocationSync = useSavingsSync(3000);
+
+  const handleRouteWindfallToDebt = (amount) => {
+    setVehicleLoanBalance((prev) => {
+      const next = Math.max(0, prev - amount);
+      localStorage.setItem('behavioral_vehicle_loan', String(next));
+      return next;
+    });
+    setIsWindfallModalOpen(false);
+    setSyncToast(`⚡ Routed +$${amount.toLocaleString()} directly to vehicle loan principal!`);
+    setTimeout(() => setSyncToast(''), 4000);
+  };
+
+  const handleRouteWindfallToRelocation = (amount) => {
+    relocationSync.addFunds(amount);
+    setIsWindfallModalOpen(false);
+    setSyncToast(`⚡ Deposited +$${amount.toLocaleString()} into HYSA Relocation Buffer!`);
+    setTimeout(() => setSyncToast(''), 4000);
+  };
+
+  const handleRouteWindfallSplit = (debtAmt, relocAmt) => {
+    setVehicleLoanBalance((prev) => {
+      const next = Math.max(0, prev - debtAmt);
+      localStorage.setItem('behavioral_vehicle_loan', String(next));
+      return next;
+    });
+    relocationSync.addFunds(relocAmt);
+    setIsWindfallModalOpen(false);
+    setSyncToast(`⚡ Routed $${debtAmt.toLocaleString()} to Loan & $${relocAmt.toLocaleString()} to Relocation!`);
+    setTimeout(() => setSyncToast(''), 4000);
+  };
+
+  const handleDeclineWindfall = () => {
+    setIsWindfallModalOpen(false);
+    setSyncToast('Windfall optimization declined. Capital remains in checking account.');
+    setTimeout(() => setSyncToast(''), 3000);
+  };
 
   useEffect(() => {
     // Check if user opened this page via a device sync link (#sync=...)
@@ -265,6 +319,13 @@ export default function PersonalFinanceTracker() {
   const handleSaveEntry = (newEntry) => {
     addEntry(newEntry);
     closeAdd();
+    if (newEntry.type === 'income' && Number(newEntry.amount) >= 900) {
+      setWindfallData({
+        amount: Number(newEntry.amount),
+        source: newEntry.description || newEntry.category || 'Inbound Deposit',
+      });
+      setIsWindfallModalOpen(true);
+    }
   };
 
   return (
@@ -307,6 +368,20 @@ export default function PersonalFinanceTracker() {
             )}
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setWindfallData({
+                  amount: 980,
+                  source: 'Corporate Bonus / Anomaly Deposit',
+                });
+                setIsWindfallModalOpen(true);
+              }}
+              title="Test Windfall Interceptor Modal (Phase 5)"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-amber-500/15 hover:bg-amber-500/25 active:scale-95 transition-all backdrop-blur-md border border-amber-500/30 text-xs font-semibold text-amber-300 shadow-lg cursor-pointer"
+            >
+              <Sparkles className="text-amber-400" size={15} />
+              <span className="hidden sm:inline">Windfall ($980)</span>
+            </button>
             <button
               onClick={() => setShowSyncModal(true)}
               title="Sync to Phone & Devices"
@@ -504,6 +579,27 @@ export default function PersonalFinanceTracker() {
                 totalVariable={totalVariable}
                 activeMonth={activeMonth}
                 onNavigateTab={setActiveTab}
+                actualNetIncome={5475}
+                vehicleLoanBalance={vehicleLoanBalance}
+                relocationSync={relocationSync}
+                onTriggerWindfall={() => {
+                  setWindfallData({
+                    amount: 980,
+                    source: 'Simulated Performance Bonus',
+                  });
+                  setIsWindfallModalOpen(true);
+                }}
+                onAddFoodEntry={(item) => {
+                  addEntry({
+                    id: `food_${Date.now()}`,
+                    month: activeMonth || currentMonthKey(),
+                    category: item.category,
+                    amount: item.amount,
+                    type: 'variable',
+                    source: 'Bifurcated Food Tracker',
+                    date: new Date().toISOString(),
+                  });
+                }}
               />
             )}
             {(activeTab === 'subscriptions_debt' || activeTab === 'subscriptions' || activeTab === 'debt') && (
@@ -567,6 +663,17 @@ export default function PersonalFinanceTracker() {
           </button>
         </motion.div>
       </div>
+
+      {/* Windfall Interceptor Modal (Phase 5) */}
+      <WindfallInterceptorModal
+        isOpen={isWindfallModalOpen}
+        windfallAmount={windfallData.amount}
+        windfallSource={windfallData.source}
+        onRouteToDebt={handleRouteWindfallToDebt}
+        onRouteToRelocation={handleRouteWindfallToRelocation}
+        onRouteSplit={handleRouteWindfallSplit}
+        onDecline={handleDeclineWindfall}
+      />
 
       {/* Linked Accounts Modal */}
       <AnimatePresence>
@@ -1261,7 +1368,7 @@ function DashboardTab({
 
 function SubscriptionsAndDebtTab({
   fixedExpenses = [],
-  totalFixed = 0,
+  totalFixed: _totalFixed = 0,
   debts = [],
   entries = [],
   linkedAccounts = [],
@@ -1843,8 +1950,8 @@ function WealthTab({
   linkedAccounts = [],
   cashSurplus = 0,
   currentNet: _currentNet = 0,
-  totalFixed = 0,
-  totalVariable = 0,
+  totalFixed: _totalFixed = 0,
+  totalVariable: _totalVariable = 0,
   optimization,
   onOpenLink,
   onNavigateTab,
@@ -1909,7 +2016,7 @@ function WealthTab({
   const kiaOriginal = kiaDebt?.original || kiaDebt?.balance || (kiaBalance > 0 ? kiaBalance : 9000);
   const kiaApr = kiaDebt?.apr || 12.5;
   const isKiaPaidOff = kiaDebt ? kiaBalance <= 0 : false;
-  const hasKiaDebt = kiaDebt != null && kiaBalance > 0;
+  const _hasKiaDebt = kiaDebt != null && kiaBalance > 0;
   const phase3Progress =
     kiaOriginal > 0
       ? Math.min(Math.max(((kiaOriginal - kiaBalance) / kiaOriginal) * 100, 0), 100)
@@ -1931,13 +2038,13 @@ function WealthTab({
   // Investment Targets
   const rothIraTarget = 7000;
   const rothCurrent = Math.min(totalInvestmentAssets, rothIraTarget);
-  const rothPct = Math.min((rothCurrent / rothIraTarget) * 100, 100);
+  const _rothPct = Math.min((rothCurrent / rothIraTarget) * 100, 100);
 
   // Optimization impacts
   const optSavings = optimization?.totalPotentialSavings || 0;
   const carMonthsSaved = optimization?.goalImpacts?.car?.monthsSaved || 3;
   const carInterestSaved = optimization?.goalImpacts?.car?.interestSaved || 450;
-  const hysaWeeksFaster = optimization?.goalImpacts?.hysa?.weeksFaster || 4;
+  const _hysaWeeksFaster = optimization?.goalImpacts?.hysa?.weeksFaster || 4;
   const tenYearCompound = optimization?.goalImpacts?.funds?.tenYearTotal || 45000;
 
   return (
@@ -2467,7 +2574,13 @@ function OptimizationTab({
   totalVariable: _totalVariable,
   activeMonth,
   onNavigateTab: _onNavigateTab,
+  actualNetIncome = 5475,
+  vehicleLoanBalance = 9000,
+  relocationSync,
+  onTriggerWindfall,
+  onAddFoodEntry,
 }) {
+  const [subTab, setSubTab] = useState('behavioral'); // 'behavioral' | 'budget_caps'
   const [appliedAll, setAppliedAll] = useState(false);
   const [appliedCategory, setAppliedCategory] = useState({});
   const [activeFilter, setActiveFilter] = useState('all'); // 'all', 'cut', 'reduce'
@@ -2501,7 +2614,88 @@ function OptimizationTab({
 
   return (
     <div className="space-y-5">
-      {/* 1. Hero Optimization Card */}
+      {/* View Switcher: Behavioral Execution Engine vs Spending Trim */}
+      <div className="flex bg-zinc-900/90 backdrop-blur-xl p-1.5 rounded-2xl border border-zinc-800 shadow-xl">
+        <button
+          type="button"
+          onClick={() => setSubTab('behavioral')}
+          className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            subTab === 'behavioral'
+              ? 'bg-gradient-to-r from-emerald-500 to-indigo-600 text-white shadow-lg'
+              : 'text-zinc-400 hover:text-white'
+          }`}
+        >
+          <Sparkles size={14} className="text-yellow-300" />
+          <span>Behavioral Engine (Phases 1-4)</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setSubTab('budget_caps')}
+          className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            subTab === 'budget_caps'
+              ? 'bg-white text-black shadow-lg'
+              : 'text-zinc-400 hover:text-white'
+          }`}
+        >
+          <Target size={14} />
+          <span>Trim & Budget Caps</span>
+        </button>
+      </div>
+
+      {subTab === 'behavioral' ? (
+        <div className="space-y-6">
+          {/* Active Behavioral Overview & Windfall Interceptor Test CTA */}
+          <div className="p-4 rounded-3xl bg-gradient-to-r from-amber-500/15 via-zinc-900 to-indigo-950/40 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xl">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  Active Behavioral Execution
+                </span>
+                <span className="text-[10px] text-zinc-400">January 2027 Milestone</span>
+              </div>
+              <h3 className="text-sm font-bold text-white">
+                Cash Flow Optimization & Accelerated Liquidation
+              </h3>
+              <p className="text-xs text-zinc-400">
+                Shift UX from passive tracking to active behavioral execution.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onTriggerWindfall}
+              className="px-3.5 py-2 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 text-black font-extrabold text-xs flex items-center justify-center gap-1.5 hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-amber-500/20 cursor-pointer self-start sm:self-auto shrink-0"
+            >
+              <Sparkles size={14} className="animate-spin" />
+              <span>Simulate Windfall ($980 Bonus)</span>
+            </button>
+          </div>
+
+          {/* Phase 1: The Take-Home Waterfall Component (Framer Motion) */}
+          <TakeHomeWaterfall
+            actualNetIncome={actualNetIncome}
+            useCustomBaseline={true}
+          />
+
+          {/* Phase 2: Accelerated Principal Paydown Widget */}
+          <AcceleratedPrincipalPaydown
+            principalBalance={vehicleLoanBalance}
+            interestRate={0.125}
+          />
+
+          {/* Phase 3: Bifurcated Food Tracker */}
+          <BifurcatedFoodTracker
+            onAddFoodEntry={onAddFoodEntry}
+          />
+
+          {/* Phase 4: Relocation Buffer Progress Ring */}
+          <RelocationBufferRing
+            targetGoal={3000}
+            syncHook={relocationSync}
+          />
+        </div>
+      ) : (
+        <div className="space-y-5">
+          {/* 1. Hero Optimization Card */}
       <div className="relative overflow-hidden p-5 rounded-3xl bg-gradient-to-br from-indigo-900/50 via-purple-900/35 to-zinc-900/90 backdrop-blur-2xl border border-indigo-500/25 shadow-2xl space-y-4">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-2.5">
@@ -2892,6 +3086,8 @@ function OptimizationTab({
           </div>
         </div>
       </GlassCard>
+        </div>
+      )}
     </div>
   );
 }
