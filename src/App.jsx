@@ -12,7 +12,6 @@ import {
   Mic,
   Trash2,
   Calendar,
-  Layers,
   Building2,
   Sparkles,
   Lightbulb,
@@ -29,8 +28,8 @@ import {
   ShieldAlert,
   ChevronLeft,
   ChevronRight,
-  AlertTriangle,
   Smartphone,
+  Compass,
 } from 'lucide-react';
 import {
   useFinanceData,
@@ -47,6 +46,7 @@ import {
 } from './lib/store.js';
 import { generateOptimizationInsights } from './lib/optimization.js';
 import AddEntrySheet from './components/AddEntrySheet.jsx';
+import SpendingTab from './components/SpendingTab.jsx';
 import LinkedAccountsModal from './components/LinkedAccountsModal.jsx';
 import SyncDevicesModal from './components/SyncDevicesModal.jsx';
 import TakeHomeWaterfall from './components/TakeHomeWaterfall.jsx';
@@ -503,19 +503,20 @@ export default function PersonalFinanceTracker() {
         {/* Tab Navigation (iOS Segmented Control Style) */}
         <div className="flex bg-white/10 backdrop-blur-xl p-1 rounded-2xl border border-white/10 shadow-inner overflow-x-auto no-scrollbar">
           {[
-            { id: 'dashboard', label: 'Dashboard' },
+            { id: 'dashboard', label: 'Overview' },
+            { id: 'spending', label: 'Spending' },
+            { id: 'debts', label: 'Debts & Bills' },
             { id: 'optimize', label: 'Optimize' },
-            { id: 'subscriptions_debt', label: 'Subscriptions & Debt' },
             { id: 'wealth', label: 'Invest & Save' },
           ].map((t) => {
             const isTabActive =
               activeTab === t.id ||
-              (t.id === 'subscriptions_debt' && (activeTab === 'subscriptions' || activeTab === 'debt'));
+              (t.id === 'debts' && (activeTab === 'subscriptions_debt' || activeTab === 'subscriptions' || activeTab === 'debt'));
             return (
               <button
                 key={t.id}
                 onClick={() => setActiveTab(t.id)}
-                className="relative flex-1 py-2 px-2.5 text-xs sm:text-sm font-medium capitalize z-10 whitespace-nowrap text-center"
+                className="relative flex-1 py-2 px-2.5 text-xs sm:text-sm font-medium capitalize z-10 whitespace-nowrap text-center cursor-pointer"
               >
                 {isTabActive && (
                   <motion.div
@@ -569,6 +570,17 @@ export default function PersonalFinanceTracker() {
                 onAdd={() => openAdd(false)}
               />
             )}
+            {activeTab === 'spending' && (
+              <SpendingTab
+                totalVariable={totalVariable}
+                categoryTotals={categoryTotals}
+                budgets={budgets}
+                entries={entries}
+                activeMonth={activeMonth}
+                onAdd={() => openAdd(false)}
+                onDelete={removeEntry}
+              />
+            )}
             {activeTab === 'optimize' && (
               <OptimizationTab
                 optimization={optimization}
@@ -602,7 +614,7 @@ export default function PersonalFinanceTracker() {
                 }}
               />
             )}
-            {(activeTab === 'subscriptions_debt' || activeTab === 'subscriptions' || activeTab === 'debt') && (
+            {(activeTab === 'debts' || activeTab === 'subscriptions_debt' || activeTab === 'subscriptions' || activeTab === 'debt') && (
               <SubscriptionsAndDebtTab
                 fixedExpenses={fixedExpenses}
                 totalFixed={totalFixed}
@@ -730,638 +742,390 @@ function formatCategory(cat) {
 
 function DashboardTab({
   totalVariable,
-  categoryTotals,
-  budgets,
-  cashSurplus,
+  categoryTotals: _categoryTotals,
+  budgets: _budgets,
+  cashSurplus: _cashSurplus,
   debtSplit: _debtSplit,
   savingsSplit: _savingsSplit,
   monthlyBurn = 0,
-  netCashFlow = 0,
+  netCashFlow: _netCashFlow = 0,
   currentNet = 0,
-  totalFixed: _totalFixed = 0,
+  totalFixed = 0,
   debts = [],
   entries,
   linkedAccounts = [],
   optimization,
-  activeMonth,
+  activeMonth: _activeMonth,
   onNavigateTab,
   onOpenLink,
-  onOpenSync,
-  onDelete,
-  onAdd,
+  onOpenSync: _onOpenSync,
+  onDelete: _onDelete,
+  onAdd: _onAdd,
 }) {
-  const [activityScope, setActivityScope] = useState('month');
-  const allCategories = Object.keys(categoryTotals);
-
-  const monthTransactions = useMemo(() => {
-    return entries
-      .filter((e) => e.kind !== 'debt' && (!e.date || e.date.startsWith(activeMonth)))
-      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  }, [entries, activeMonth]);
-
-  const allRecentTransactions = useMemo(() => {
-    return entries
-      .filter((e) => e.kind !== 'debt')
-      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
-      .slice(0, 25);
-  }, [entries]);
-
-  const displayedTransactions = activityScope === 'month' ? monthTransactions : allRecentTransactions;
-
   const {
     bankAccounts,
     creditAccounts,
-    investmentAccounts,
     totalCashInBank,
     totalCreditBalance,
     totalPortfolioValue,
   } = categorizeAccounts(linkedAccounts);
 
-  // HYSA / Savings Accounts Calculation for Waterfall
-  const savingsAccounts = bankAccounts.filter(
-    (a) =>
-      a.subtype?.toLowerCase().includes('savings') ||
-      a.name?.toLowerCase().includes('savings') ||
-      a.name?.toLowerCase().includes('hysa'),
-  );
-  const totalHysaBalance = savingsAccounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+  const netLiquid = totalCashInBank - totalCreditBalance;
+  const netLiquidWithInvestments = netLiquid + totalPortfolioValue;
 
-  // Auto Loan / Debt Calculation for Waterfall
-  const kiaDebt = debts.find((d) => {
-    const name = (d.name || '').toLowerCase();
-    return name.includes('kia') || name.includes('sportage') || name.includes('auto') || name.includes('car');
-  }) || debts.find((d) => d.kind === 'debt');
-  const kiaBalance = kiaDebt ? debtBalance(kiaDebt, entries) : 0;
+  // 3 most recent transactions preview
+  const recentTransactionsPreview = useMemo(() => {
+    return entries
+      .filter((e) => e.kind !== 'debt')
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+      .slice(0, 3);
+  }, [entries]);
 
-  // Waterfall Tiers Evaluation
-  const hysaTarget = 3000;
-  const isHysaFull = totalHysaBalance >= hysaTarget;
-  const isKiaPaidOff = kiaDebt ? kiaBalance <= 0 : false;
+  // Cash runway calculation
+  const safeMonthlyBurn = monthlyBurn > 0 ? monthlyBurn : (totalFixed + totalVariable) || 1;
+  const checkingRunwayMonths = (totalCashInBank / safeMonthlyBurn).toFixed(1);
 
-  const currentWaterfallTier = !isHysaFull ? 1 : !isKiaPaidOff ? 2 : 3;
-
-  // Monthly Runway in Weeks (if in deficit)
-  const isDeficit = netCashFlow < 0;
-  const weeklyBurn = (monthlyBurn || 1) / 4.33;
-  const weeksRunway = Math.max(Math.round((totalCashInBank / weeklyBurn) * 10) / 10, 0);
+  // Suggestions data
+  const recoverableMonthly = optimization?.totalPotentialSavings || 0;
+  const healthScore = optimization?.healthScore || 80;
 
   return (
-    <div className="space-y-5">
-      {/* Important Overview Summary Cards */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-3">
-        {/* Cash in Bank */}
-        <button
-          onClick={onOpenLink}
-          className="p-3 sm:p-3.5 rounded-2xl bg-white/10 hover:bg-white/15 backdrop-blur-xl border border-white/10 shadow-lg text-left transition-all active:scale-95"
-        >
-          <div className="flex items-center gap-1.5 mb-1.5 text-blue-400">
-            <Building2 size={15} />
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Cash in Bank</span>
+    <div className="space-y-6">
+      {/* 1. Executive Financial Snapshot */}
+      <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-zinc-900/95 via-zinc-900/80 to-zinc-950/95 border border-zinc-800 shadow-2xl backdrop-blur-2xl space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-800">
+          <div>
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-400 block">
+              Connected Net Liquid Balances
+            </span>
+            <div className="flex items-baseline gap-2 mt-0.5">
+              <h2 className="text-3xl sm:text-4xl font-black text-white">
+                {formatMoney(netLiquid)}
+              </h2>
+              <span className="text-xs text-zinc-400 font-medium">
+                ({formatMoney(netLiquidWithInvestments)} incl. Portfolio)
+              </span>
+            </div>
           </div>
-          <p className="text-sm sm:text-base font-bold text-white tracking-tight truncate">
-            {formatMoney(totalCashInBank)}
-          </p>
-          <p className="text-[10px] text-gray-500 mt-0.5 truncate">
-            {bankAccounts.length > 0 ? `${bankAccounts.length} ${bankAccounts.length === 1 ? 'account' : 'accounts'}` : 'Tap to link'}
-          </p>
-        </button>
+          <button
+            type="button"
+            onClick={onOpenLink}
+            className="self-start sm:self-auto px-3 py-1.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 text-xs font-semibold text-zinc-200 border border-zinc-700 transition-colors cursor-pointer"
+          >
+            Manage Accounts ({linkedAccounts.length})
+          </button>
+        </div>
 
-        {/* Credit Card Balance */}
-        <button
-          onClick={onOpenLink}
-          className="p-3 sm:p-3.5 rounded-2xl bg-white/10 hover:bg-white/15 backdrop-blur-xl border border-white/10 shadow-lg text-left transition-all active:scale-95"
-        >
-          <div className="flex items-center gap-1.5 mb-1.5 text-amber-400">
-            <CreditCard size={15} />
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-400">Credit Cards (Owed)</span>
-          </div>
-          <p className="text-sm sm:text-base font-bold text-amber-300 tracking-tight truncate">
-            {formatMoney(totalCreditBalance)}
-          </p>
-          <p className="text-[10px] text-amber-400/80 mt-0.5 truncate">
-            {creditAccounts.length > 0 ? (totalCreditBalance > 0 ? 'Balance owed (Liability)' : 'No balance owed') : 'Tap to link'}
-          </p>
-        </button>
+        {/* 3 Quick Glances */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          <button
+            type="button"
+            onClick={() => onNavigateTab('wealth')}
+            className="p-3.5 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-blue-500/40 text-left transition-all cursor-pointer group"
+          >
+            <div className="flex items-center justify-between text-zinc-400 mb-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 text-blue-400">
+                <Building2 size={14} /> Cash in Bank
+              </span>
+              <ArrowRight size={13} className="text-zinc-600 group-hover:text-blue-400 group-hover:translate-x-0.5 transition-all" />
+            </div>
+            <div className="text-xl font-black text-white">{formatMoney(totalCashInBank)}</div>
+            <p className="text-[10px] text-zinc-500 mt-0.5">{bankAccounts.length} checking account</p>
+          </button>
 
-        {/* Portfolio Value */}
-        <button
-          onClick={onOpenLink}
-          className="p-3 sm:p-3.5 rounded-2xl bg-white/10 hover:bg-white/15 backdrop-blur-xl border border-white/10 shadow-lg text-left transition-all active:scale-95"
-        >
-          <div className="flex items-center gap-1.5 mb-1.5 text-emerald-400">
-            <TrendingUp size={15} />
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Portfolio</span>
-          </div>
-          <p className="text-sm sm:text-base font-bold text-emerald-300 tracking-tight truncate">
-            {formatMoney(totalPortfolioValue)}
-          </p>
-          <p className="text-[10px] text-gray-500 mt-0.5 truncate">
-            {investmentAccounts.length > 0 ? 'Robinhood' : 'Tap to link'}
-          </p>
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={() => onNavigateTab('debts')}
+            className="p-3.5 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-amber-500/40 text-left transition-all cursor-pointer group"
+          >
+            <div className="flex items-center justify-between text-zinc-400 mb-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 text-amber-400">
+                <CreditCard size={14} /> Credit Cards (Owed)
+              </span>
+              <ArrowRight size={13} className="text-zinc-600 group-hover:text-amber-400 group-hover:translate-x-0.5 transition-all" />
+            </div>
+            <div className="text-xl font-black text-amber-400">
+              {totalCreditBalance > 0 ? `-${formatMoney(totalCreditBalance)}` : '$0.00'}
+            </div>
+            <p className="text-[10px] text-zinc-500 mt-0.5">
+              {creditAccounts.length} active liability
+            </p>
+          </button>
 
-      {/* 1. Cash Flow Burn Rate & Runway Bar */}
-      <div
-        className={`p-4 rounded-3xl backdrop-blur-xl border shadow-xl space-y-3 transition-all ${
-          isDeficit
-            ? 'bg-gradient-to-br from-amber-950/40 via-rose-950/20 to-zinc-900/90 border-amber-500/30'
-            : 'bg-gradient-to-br from-emerald-950/40 via-teal-950/20 to-zinc-900/90 border-emerald-500/30'
-        }`}
-      >
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-2.5">
-            <div
-              className={`p-2 rounded-xl border ${
-                isDeficit
-                  ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-                  : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-              }`}
-            >
-              {isDeficit ? <AlertTriangle size={18} /> : <TrendingUp size={18} />}
+          <button
+            type="button"
+            onClick={() => onNavigateTab('wealth')}
+            className="p-3.5 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-emerald-500/40 text-left transition-all cursor-pointer group"
+          >
+            <div className="flex items-center justify-between text-zinc-400 mb-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 text-emerald-400">
+                <TrendingUp size={14} /> Portfolio
+              </span>
+              <ArrowRight size={13} className="text-zinc-600 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-all" />
+            </div>
+            <div className="text-xl font-black text-emerald-400">{formatMoney(totalPortfolioValue)}</div>
+            <p className="text-[10px] text-zinc-500 mt-0.5">Robinhood Roth & Individual</p>
+          </button>
+        </div>
+
+        {/* Runway & Burn Rate Meter */}
+        <div className="p-3.5 rounded-2xl bg-zinc-950/80 border border-zinc-800/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+              <ShieldCheck size={18} />
             </div>
             <div>
-              <div className="flex items-center gap-1.5">
-                <span
-                  className={`text-[10px] uppercase font-bold tracking-wider ${
-                    isDeficit ? 'text-amber-300' : 'text-emerald-300'
-                  }`}
-                >
-                  {isDeficit ? 'Monthly Cash Flow Deficit' : 'Monthly Cash Flow Surplus'}
-                </span>
-                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-white/10 text-gray-300 border border-white/10">
-                  {formatMonthName(activeMonth)}
-                </span>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-white">Checking Runway:</span>
+                <span className="font-mono text-emerald-400 font-extrabold">{checkingRunwayMonths} months</span>
               </div>
-              <p className="text-xl font-extrabold text-white">
-                {isDeficit ? `-${formatMoney(Math.abs(netCashFlow))}` : `+${formatMoney(netCashFlow)}`}
-                <span className="text-xs text-gray-400 font-normal">
-                  {isDeficit ? ' net burn this month' : ' net cash remaining'}
-                </span>
+              <p className="text-[11px] text-zinc-400">
+                Monthly burn rate: {formatMoney(safeMonthlyBurn)} ({formatMoney(totalFixed)} fixed + {formatMoney(totalVariable)} variable)
               </p>
             </div>
           </div>
-          <div className="text-right">
-            <span className="text-[10px] uppercase font-bold text-gray-400 block mb-0.5">Liquid Runway</span>
-            <span
-              className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
-                weeksRunway >= 8
-                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                  : weeksRunway >= 3
-                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                  : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
-              }`}
-            >
-              {isDeficit ? `~${weeksRunway} wks runway` : 'Stable Surplus'}
-            </span>
+          <div className="text-left sm:text-right">
+            <span className="text-[10px] uppercase font-bold text-zinc-500 block">Monthly Net Inflow</span>
+            <span className="font-mono font-bold text-emerald-400">+{formatMoney(currentNet)}/mo</span>
           </div>
         </div>
-
-        {/* Burn Details Progress Meter */}
-        <div className="p-3 bg-black/40 rounded-2xl border border-white/5 space-y-2">
-          <div className="flex justify-between items-center text-xs">
-            <span className="text-gray-400">
-              Total Burn: <strong className="text-white">{formatMoney(monthlyBurn)}</strong> outgoings
-            </span>
-            <span className="text-gray-400">
-              Income: <strong className="text-emerald-400">{formatMoney(currentNet)}</strong>
-            </span>
-          </div>
-          <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden flex">
-            <div
-              className={`h-full rounded-full transition-all duration-500 ${
-                isDeficit ? 'bg-gradient-to-r from-amber-500 to-rose-500' : 'bg-gradient-to-r from-emerald-500 to-teal-400'
-              }`}
-              style={{
-                width: `${Math.min(100, Math.round((monthlyBurn / (Math.max(currentNet, monthlyBurn) || 1)) * 100))}%`,
-              }}
-            />
-          </div>
-          <div className="flex justify-between items-center text-[10px] text-gray-400 pt-0.5">
-            <span>Everyday Checking cushion: {formatMoney(totalCashInBank)}</span>
-            <span>
-              {isDeficit
-                ? `Burns ~$${Math.round(weeklyBurn)}/week`
-                : `${Math.round(((currentNet - monthlyBurn) / (currentNet || 1)) * 100)}% savings rate`}
-            </span>
-          </div>
-        </div>
-
-        {isDeficit && (
-          <p className="text-[11px] text-amber-200/90 leading-relaxed bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20">
-            💡 <strong>Variable client hours phase:</strong> Monthly outgoings exceeded deposits by{' '}
-            {formatMoney(Math.abs(netCashFlow))}. Protect your Everyday Checking liquid buffer ({formatMoney(totalCashInBank)}) before deploying extra capital into illiquid investments.
-          </p>
-        )}
       </div>
 
-      {/* Connected Accounts Breakdown if any connected */}
-      {linkedAccounts.length > 0 && (
-        <GlassCard
-          title="Connected Net Liquid Balances"
-          icon={<Building2 className="text-blue-400" />}
-          amount={formatMoney(totalCashInBank + totalPortfolioValue - totalCreditBalance)}
-        >
-          <div className="space-y-2">
-            {linkedAccounts.map((acc) => {
-              const isCredit = acc.type === 'credit';
-              return (
-                <div
-                  key={acc.id}
-                  className={`flex items-center justify-between p-2.5 rounded-xl border ${
-                    isCredit
-                      ? 'bg-amber-950/20 border-amber-500/25'
-                      : 'bg-black/30 border-white/5'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div
-                      className={`p-1.5 rounded-lg ${
-                        acc.type === 'investment'
-                          ? 'bg-emerald-500/20 text-emerald-400'
-                          : isCredit
-                          ? 'bg-amber-500/20 text-amber-400'
-                          : 'bg-blue-500/20 text-blue-400'
-                      }`}
-                    >
-                      {acc.type === 'investment' ? (
-                        <TrendingUp size={14} />
-                      ) : isCredit ? (
-                        <CreditCard size={14} />
-                      ) : (
-                        <Building2 size={14} />
-                      )}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <p className="text-xs font-semibold text-white">{acc.name}</p>
-                        {isCredit && (
-                          <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase">
-                            Debt Owed
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[10px] text-gray-500">••••{acc.mask}</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <span
-                      className={`text-xs font-bold ${
-                        isCredit ? 'text-amber-300' : 'text-white'
-                      }`}
-                    >
-                      {isCredit ? `-${formatMoney(acc.balance)}` : formatMoney(acc.balance)}
-                    </span>
-                    {isCredit && (
-                      <span className="block text-[9px] text-amber-400/80 font-medium">Liability</span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <div className="mt-2.5 flex gap-2">
-            <button
-              onClick={onOpenLink}
-              className="flex-1 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-medium text-gray-300 transition-colors"
-            >
-              Manage Accounts
-            </button>
-            <button
-              onClick={onOpenSync}
-              className="flex-1 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-xs font-semibold text-emerald-300 flex items-center justify-center gap-1.5 transition-colors active:scale-95"
-            >
-              <Smartphone size={13} /> Sync to Phone
-            </button>
-          </div>
-        </GlassCard>
-      )}
-
-      {/* Smart Budget Optimization Callout */}
-      {optimization?.totalPotentialSavings > 0 && (
-        <div className="relative overflow-hidden p-4 rounded-3xl bg-gradient-to-br from-indigo-900/50 via-purple-900/35 to-zinc-900/80 backdrop-blur-xl border border-indigo-500/25 shadow-xl space-y-3">
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
-                <Sparkles size={18} />
-              </div>
-              <div>
-                <span className="text-[10px] uppercase font-bold tracking-wider text-indigo-300">
-                  Optimization Insights
-                </span>
-                <p className="text-sm font-bold text-white">
-                  Save up to {formatMoney(optimization.totalPotentialSavings)}/mo
-                </p>
-              </div>
-            </div>
-            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-              Score: {optimization.healthScore}/100
+      {/* 2. General Suggestions & Actionable Highlights */}
+      <div className="p-6 rounded-3xl bg-gradient-to-br from-indigo-950/40 via-zinc-900/90 to-zinc-950 border border-indigo-500/25 shadow-2xl backdrop-blur-2xl space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+          <div className="flex items-center gap-2">
+            <span className="p-1.5 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+              <Sparkles size={16} />
             </span>
+            <h3 className="text-base font-bold text-white">General Suggestions & Strategy</h3>
+          </div>
+          <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+            Health: {healthScore}/100
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {/* Suggestion 1: Spending Trimming */}
+          <div className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800 flex flex-col justify-between space-y-3">
+            <div className="space-y-1">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-rose-400 flex items-center gap-1">
+                <Scissors size={12} /> Spending Optimization
+              </span>
+              <div className="text-base font-extrabold text-white">
+                +{formatMoney(recoverableMonthly)}/mo recoverable
+              </div>
+              <p className="text-[11px] text-zinc-400 leading-relaxed">
+                Recover unessential grocery leaks, dining spikes, and duplicate streaming subscriptions.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onNavigateTab('optimize')}
+              className="w-full py-2 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-850 text-xs font-bold text-indigo-300 hover:text-white border border-zinc-800 flex items-center justify-between transition-all cursor-pointer group"
+            >
+              <span>Review in Optimize</span>
+              <ArrowRight size={13} className="group-hover:translate-x-1 transition-transform" />
+            </button>
           </div>
 
-          <p className="text-xs text-gray-300 leading-relaxed">
-            Identified <strong className="text-white font-semibold">{optimization.suggestions.length} spending cut opportunities</strong> (saving roughly <span className="text-emerald-400 font-semibold">{formatMoney(optimization.totalPotentialSavings * 12)}/yr</span>).
-          </p>
+          {/* Suggestion 2: Debt Acceleration */}
+          <div className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800 flex flex-col justify-between space-y-3">
+            <div className="space-y-1">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-400 flex items-center gap-1">
+                <Car size={12} /> Debt Liquidation
+              </span>
+              <div className="text-base font-extrabold text-white">
+                Save ~$2,015+ interest
+              </div>
+              <p className="text-[11px] text-zinc-400 leading-relaxed">
+                Increase monthly payment on your $9,000 Kia loan (12.5% APR) from $230 to $350+ to eliminate ~38 months.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onNavigateTab('debts')}
+              className="w-full py-2 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-850 text-xs font-bold text-amber-300 hover:text-white border border-zinc-800 flex items-center justify-between transition-all cursor-pointer group"
+            >
+              <span>Review in Debts & Bills</span>
+              <ArrowRight size={13} className="group-hover:translate-x-1 transition-transform" />
+            </button>
+          </div>
 
+          {/* Suggestion 3: Relocation Milestone */}
+          <div className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800 flex flex-col justify-between space-y-3">
+            <div className="space-y-1">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-cyan-400 flex items-center gap-1">
+                <Compass size={12} /> Relocation Goal (Jan 2027)
+              </span>
+              <div className="text-base font-extrabold text-white">
+                $3,000 Milestone Target
+              </div>
+              <p className="text-[11px] text-zinc-400 leading-relaxed">
+                Maintain steady automated transfers into HYSA (4.5% APY) to secure apartment security deposit & titling.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onNavigateTab('optimize')}
+              className="w-full py-2 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-850 text-xs font-bold text-cyan-300 hover:text-white border border-zinc-800 flex items-center justify-between transition-all cursor-pointer group"
+            >
+              <span>Track in Optimize</span>
+              <ArrowRight size={13} className="group-hover:translate-x-1 transition-transform" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. In-Depth Drill Down Navigation Hub */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between px-1">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-400">
+            Explore Details In Depth
+          </h3>
+          <span className="text-[11px] text-zinc-500">Click any tab to review</span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Card A: Spending & Categories */}
           <button
-            onClick={() => onNavigateTab?.('optimize')}
-            className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all"
+            type="button"
+            onClick={() => onNavigateTab('spending')}
+            className="p-4 rounded-3xl bg-zinc-900/80 hover:bg-zinc-850 border border-zinc-800 hover:border-blue-500/40 text-left transition-all cursor-pointer group shadow-lg"
           >
-            <Lightbulb size={14} /> Review Spending Cuts & Budget Caps <ArrowRight size={13} />
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-blue-500/20 text-blue-400 border border-blue-500/30 flex items-center justify-center">
+                  <CreditCard size={18} />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white group-hover:text-blue-300 transition-colors">
+                    Spending & Variable Budgets
+                  </h4>
+                  <span className="text-[11px] text-zinc-400">
+                    {formatMoney(totalVariable)} logged this month
+                  </span>
+                </div>
+              </div>
+              <ArrowRight size={16} className="text-zinc-600 group-hover:text-blue-400 group-hover:translate-x-1 transition-all" />
+            </div>
+            <p className="text-xs text-zinc-400">
+              Review category breakdowns, grocery vs dining spend, and full transaction history.
+            </p>
           </button>
+
+          {/* Card B: Subscriptions & Debts */}
+          <button
+            type="button"
+            onClick={() => onNavigateTab('debts')}
+            className="p-4 rounded-3xl bg-zinc-900/80 hover:bg-zinc-850 border border-zinc-800 hover:border-amber-500/40 text-left transition-all cursor-pointer group shadow-lg"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center">
+                  <Car size={18} />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white group-hover:text-amber-300 transition-colors">
+                    Subscriptions & Debts
+                  </h4>
+                  <span className="text-[11px] text-zinc-400">
+                    {formatMoney(totalFixed)}/mo fixed • {debts.length} active debts
+                  </span>
+                </div>
+              </div>
+              <ArrowRight size={16} className="text-zinc-600 group-hover:text-amber-400 group-hover:translate-x-1 transition-all" />
+            </div>
+            <p className="text-xs text-zinc-400">
+              Review recurring subscriptions, rent, auto insurance, and credit liabilities.
+            </p>
+          </button>
+
+          {/* Card C: Behavioral Optimization */}
+          <button
+            type="button"
+            onClick={() => onNavigateTab('optimize')}
+            className="p-4 rounded-3xl bg-zinc-900/80 hover:bg-zinc-850 border border-zinc-800 hover:border-indigo-500/40 text-left transition-all cursor-pointer group shadow-lg"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center">
+                  <Sparkles size={18} />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white group-hover:text-indigo-300 transition-colors">
+                    Behavioral Execution Engine
+                  </h4>
+                  <span className="text-[11px] text-zinc-400">
+                    5-Phase optimization system
+                  </span>
+                </div>
+              </div>
+              <ArrowRight size={16} className="text-zinc-600 group-hover:text-indigo-400 group-hover:translate-x-1 transition-all" />
+            </div>
+            <p className="text-xs text-zinc-400">
+              Interactive waterfall, paydown slider, food tracker, relocation ring & windfall modal.
+            </p>
+          </button>
+
+          {/* Card D: Investments & Wealth */}
+          <button
+            type="button"
+            onClick={() => onNavigateTab('wealth')}
+            className="p-4 rounded-3xl bg-zinc-900/80 hover:bg-zinc-850 border border-zinc-800 hover:border-emerald-500/40 text-left transition-all cursor-pointer group shadow-lg"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center">
+                  <TrendingUp size={18} />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white group-hover:text-emerald-300 transition-colors">
+                    Investments & Wealth
+                  </h4>
+                  <span className="text-[11px] text-zinc-400">
+                    {formatMoney(totalPortfolioValue)} portfolio assets
+                  </span>
+                </div>
+              </div>
+              <ArrowRight size={16} className="text-zinc-600 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all" />
+            </div>
+            <p className="text-xs text-zinc-400">
+              Surplus waterfall auto-pilot, Roth IRA tracking, and 10y/20y compounding engine.
+            </p>
+          </button>
+        </div>
+      </div>
+
+      {/* 4. Compact Recent Activity Snapshot */}
+      {recentTransactionsPreview.length > 0 && (
+        <div className="p-5 rounded-3xl bg-zinc-900/70 border border-zinc-800 shadow-xl backdrop-blur-xl space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+            <span className="text-xs font-bold text-zinc-300">Recent Activity</span>
+            <button
+              type="button"
+              onClick={() => onNavigateTab('spending')}
+              className="text-xs text-blue-400 hover:text-blue-300 font-semibold cursor-pointer"
+            >
+              View all in Spending →
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            {recentTransactionsPreview.map((tx) => (
+              <div key={tx.id} className="flex justify-between items-center text-xs py-1">
+                <div className="flex items-center gap-2 truncate">
+                  <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
+                  <span className="text-zinc-200 truncate">{tx.description || tx.category}</span>
+                </div>
+                <span className="font-mono font-bold text-zinc-200 shrink-0">
+                  {formatMoney(tx.amount)}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
-
-      {/* Variable Expenses */}
-      <GlassCard
-        title={`Variable Expenses (${formatMonthName(activeMonth)})`}
-        icon={<CreditCard className="text-blue-400" />}
-        amount={formatMoney(totalVariable)}
-      >
-        <div className="space-y-3.5">
-          {allCategories.length === 0 ? (
-            <p className="text-sm text-gray-500 py-2">No variable expenses logged for {formatMonthName(activeMonth)}.</p>
-          ) : (
-            allCategories.map((cat) => {
-              const spent = categoryTotals[cat] || 0;
-              const hasBudget = budgets[cat] != null && budgets[cat] > 0;
-              const max = hasBudget ? budgets[cat] : (totalVariable > 0 ? totalVariable : spent || 100);
-              const catStyle = getCategoryStyle(cat);
-              return (
-                <ProgressBar
-                  key={cat}
-                  label={formatCategory(cat)}
-                  current={spent}
-                  max={max}
-                  color={catStyle.bar}
-                  hasExplicitBudget={hasBudget}
-                />
-              );
-            })
-          )}
-        </div>
-
-        <button
-          onClick={onAdd}
-          className="mt-4 w-full py-2.5 rounded-xl border border-dashed border-white/15 text-xs font-medium text-gray-400 hover:text-white hover:border-white/30 flex items-center justify-center gap-1.5 transition-colors"
-        >
-          <Plus size={14} /> Add Variable Expense
-        </button>
-      </GlassCard>
-
-      {/* 2. Surplus Routing Waterfall ("Next Best Dollar" Auto-Pilot) */}
-      <GlassCard
-        title="Next Best Dollar Auto-Pilot"
-        icon={<Target className="text-emerald-400" />}
-        amount={formatMoney(cashSurplus)}
-      >
-        <div className="space-y-3">
-          <div className="flex items-center justify-between text-xs text-gray-400">
-            <span>Discretionary surplus available for wealth building</span>
-            <span className="text-emerald-400 font-bold">+{formatMoney(cashSurplus)} / mo</span>
-          </div>
-
-          {/* 3 Strategic Waterfall Tiers */}
-          <div className="space-y-2.5">
-            {/* Tier 1: $3,000 HYSA Move-In Buffer */}
-            <div
-              className={`p-3 rounded-2xl border transition-all ${
-                currentWaterfallTier === 1
-                  ? 'bg-cyan-950/30 border-cyan-500/40 shadow-lg shadow-cyan-950/50 ring-1 ring-cyan-500/30'
-                  : isHysaFull
-                  ? 'bg-black/30 border-emerald-500/20 opacity-80'
-                  : 'bg-black/30 border-white/5 opacity-60'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md border ${
-                      isHysaFull
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                        : currentWaterfallTier === 1
-                        ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
-                        : 'bg-white/10 text-gray-400 border-white/10'
-                    }`}
-                  >
-                    Tier 1
-                  </span>
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-xs font-bold text-white">Maryland Move-In Buffer (HYSA)</p>
-                      {isHysaFull ? (
-                        <span className="text-[9px] font-bold text-emerald-400 flex items-center gap-0.5">
-                          <CheckCircle2 size={11} /> Secured
-                        </span>
-                      ) : currentWaterfallTier === 1 ? (
-                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                          Active Priority
-                        </span>
-                      ) : null}
-                    </div>
-                    <p className="text-[10px] text-gray-400">
-                      Rockville, MD apartment deposit, advance rent & MVA titling reserve
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-xs font-bold text-white">
-                    {formatMoney(totalHysaBalance)}{' '}
-                    <span className="text-gray-500 text-[10px]">/ ${hysaTarget.toLocaleString()}</span>
-                  </p>
-                  <p className="text-[10px] text-cyan-400 font-semibold">
-                    {Math.min(100, Math.round((totalHysaBalance / hysaTarget) * 100))}%
-                  </p>
-                </div>
-              </div>
-              <div className="mt-2 w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-cyan-400 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min(100, Math.round((totalHysaBalance / hysaTarget) * 100))}%` }}
-                />
-              </div>
-            </div>
-
-            {/* Tier 2: 2018 Kia Sportage Loan (12.5% APR) */}
-            <div
-              className={`p-3 rounded-2xl border transition-all ${
-                currentWaterfallTier === 2
-                  ? 'bg-amber-950/30 border-amber-500/40 shadow-lg shadow-amber-950/50 ring-1 ring-amber-500/30'
-                  : isKiaPaidOff
-                  ? 'bg-black/30 border-emerald-500/20 opacity-80'
-                  : 'bg-black/30 border-white/5 opacity-70'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md border ${
-                      isKiaPaidOff
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                        : currentWaterfallTier === 2
-                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                        : 'bg-white/10 text-gray-400 border-white/10'
-                    }`}
-                  >
-                    Tier 2
-                  </span>
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-xs font-bold text-white">2018 Kia Sportage (12.5% APR)</p>
-                      {currentWaterfallTier === 2 && (
-                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                          Next Target
-                        </span>
-                      )}
-                      {isKiaPaidOff && (
-                        <span className="text-[9px] font-bold text-emerald-400 flex items-center gap-0.5">
-                          <CheckCircle2 size={11} /> Debt Free
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[10px] text-gray-400">
-                      Direct $800/mo + bonus • Mark extra as PRINCIPAL-ONLY • Hold & pay off (do not lease)
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-xs font-bold text-amber-300">
-                    {kiaBalance > 0 ? formatMoney(kiaBalance) : 'Paid Off'}
-                  </p>
-                  <p className="text-[10px] text-amber-400/80 font-medium">12.5% Guaranteed Return</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Tier 3: Tax-Advantaged Wealth (Roth IRA & Robinhood) */}
-            <div
-              className={`p-3 rounded-2xl border transition-all ${
-                currentWaterfallTier === 3
-                  ? 'bg-emerald-950/30 border-emerald-500/40 shadow-lg shadow-emerald-950/50 ring-1 ring-emerald-500/30'
-                  : 'bg-black/30 border-white/5 opacity-70'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md border ${
-                      currentWaterfallTier === 3
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                        : 'bg-white/10 text-gray-400 border-white/10'
-                    }`}
-                  >
-                    Tier 3
-                  </span>
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-xs font-bold text-white">Tax-Advantaged Wealth Engine</p>
-                      {currentWaterfallTier === 3 && (
-                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                          Active Wealth Engine
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[10px] text-gray-400">
-                      Max $7k/yr Roth IRA + Robinhood index funds (VOO/VTI compounding at 8-10%)
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-xs font-bold text-emerald-300">{formatMoney(totalPortfolioValue)}</p>
-                  <p className="text-[10px] text-gray-400">Active Robinhood</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </GlassCard>
-
-      {/* Recent Activity List (Discretized per Month) */}
-      <GlassCard
-        title="Recent Activity"
-        icon={<Layers className="text-indigo-400" />}
-        amount={`${displayedTransactions.length} items`}
-      >
-        <div className="flex items-center gap-1.5 bg-black/40 p-1 rounded-xl border border-white/5 text-[11px] mb-2.5">
-          <button
-            onClick={() => setActivityScope('month')}
-            className={`flex-1 py-1 px-2 rounded-lg font-medium transition-all text-center ${
-              activityScope === 'month'
-                ? 'bg-white/20 text-white font-semibold shadow-sm'
-                : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            {formatMonthName(activeMonth)} ({monthTransactions.length})
-          </button>
-          <button
-            onClick={() => setActivityScope('all')}
-            className={`flex-1 py-1 px-2 rounded-lg font-medium transition-all text-center ${
-              activityScope === 'all'
-                ? 'bg-white/20 text-white font-semibold shadow-sm'
-                : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            All Activity ({entries.filter((e) => e.kind !== 'debt').length})
-          </button>
-        </div>
-
-        {displayedTransactions.length === 0 ? (
-          <p className="text-sm text-gray-500 py-3 text-center">
-            No transactions recorded for {activityScope === 'month' ? formatMonthName(activeMonth) : 'this account'}.
-          </p>
-        ) : (
-          <div className="space-y-2 mt-2">
-            {displayedTransactions.map((item) => {
-              const isIncome = item.kind === 'income';
-              const resolvedCat = normalizeCategory(item.category || item.kind, item.name, item.amount);
-              const catStyle = getCategoryStyle(resolvedCat, item.kind);
-              return (
-                <div
-                  key={item.id}
-                  className="group flex items-center justify-between p-3 bg-black/30 rounded-xl border border-white/5 hover:border-white/10 transition-colors"
-                >
-                  <div className="flex-1 min-w-0 pr-3">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-md border ${catStyle.bg} ${catStyle.text} ${catStyle.border}`}
-                      >
-                        {item.kind === 'payment' ? 'Debt Pay' : formatCategory(resolvedCat)}
-                      </span>
-                      {item.pending && (
-                        <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                          Pending
-                        </span>
-                      )}
-                      <p className="text-sm font-medium text-gray-200 truncate">{item.name}</p>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
-                      <Calendar size={11} />
-                      {item.date || 'Recent'}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`text-sm font-semibold ${
-                        isIncome ? 'text-green-400' : 'text-white'
-                      }`}
-                    >
-                      {isIncome ? '+' : '-'}
-                      {formatMoney(item.amount)}
-                    </span>
-                    <button
-                      onClick={() => onDelete(item.id)}
-                      aria-label={`Delete ${item.name}`}
-                      className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-white/5 transition-colors"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </GlassCard>
     </div>
   );
 }

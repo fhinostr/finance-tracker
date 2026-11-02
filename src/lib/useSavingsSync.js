@@ -60,3 +60,4 @@ export function useSavingsSync(targetGoal = 3000) {
     addFunds,
   };
 }
+
