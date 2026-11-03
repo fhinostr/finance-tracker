@@ -1,4 +1,5 @@
 import { getSupabaseClient } from './supabase.js';
+import { getGoalAccountMapping, saveGoalAccountMapping } from './store.js';
 
 const STORAGE_KEY_MAIN = 'finance-tracker:v2';
 const STORAGE_KEY_ACCOUNTS = 'finance-tracker:linked-accounts:v1';
@@ -175,6 +176,8 @@ export function getLocalSnapshot() {
     env: plaid.env || 'sandbox',
   };
 
+  const cleanGoalAccounts = getGoalAccountMapping();
+
   return {
     version: 2,
     timestamp: Date.now(),
@@ -184,6 +187,7 @@ export function getLocalSnapshot() {
     },
     accounts: cleanAccounts,
     plaid: cleanPlaid,
+    goalAccounts: cleanGoalAccounts,
   };
 }
 
@@ -202,6 +206,9 @@ export function applyLocalSnapshot(snapshot) {
     }
     if (snapshot.plaid) {
       localStorage.setItem(STORAGE_KEY_PLAID, JSON.stringify(snapshot.plaid));
+    }
+    if (snapshot.goalAccounts) {
+      saveGoalAccountMapping(snapshot.goalAccounts);
     }
     localStorage.setItem(STORAGE_KEY_SYNC_TIME, String(Date.now()));
 

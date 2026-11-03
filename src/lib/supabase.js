@@ -37,21 +37,37 @@ export function saveSupabaseConfig(url, anonKey) {
 }
 
 export function getPlaidConfig() {
+  const envClientId = import.meta.env?.VITE_PLAID_CLIENT_ID || '';
+  const envSecret = import.meta.env?.VITE_PLAID_SECRET || '';
+  const envPlaidEnv = import.meta.env?.VITE_PLAID_ENV || '';
+
   try {
     const raw = localStorage.getItem(STORAGE_KEY_PLAID);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        clientId: parsed.clientId || envClientId || '',
+        secret: parsed.secret || envSecret || '',
+        env: parsed.env || envPlaidEnv || 'sandbox',
+      };
+    }
   } catch {
     // ignore
   }
-  return { clientId: '', secret: '', env: 'sandbox' };
+  return { clientId: envClientId || '', secret: envSecret || '', env: envPlaidEnv || 'sandbox' };
 }
 
 export function savePlaidConfig(clientId, secret, env = 'sandbox') {
   try {
-    localStorage.setItem(
-      STORAGE_KEY_PLAID,
-      JSON.stringify({ clientId: clientId.trim(), secret: secret.trim(), env }),
-    );
+    const cleanConfig = {
+      clientId: clientId.trim(),
+      secret: secret.trim(),
+      env: env || 'sandbox',
+    };
+    localStorage.setItem(STORAGE_KEY_PLAID, JSON.stringify(cleanConfig));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('finance-tracker:plaid-updated', { detail: cleanConfig }));
+    }
   } catch {
     // ignore
   }

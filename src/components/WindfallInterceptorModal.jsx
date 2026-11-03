@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   AlertOctagon,
@@ -8,7 +8,16 @@ import {
   ShieldAlert,
   Split,
   Calendar,
+  Settings2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
+import {
+  getGoalAccountMapping,
+  getStoredAccounts,
+  saveGoalAccountMapping,
+  formatMoney,
+} from '../lib/store.js';
 
 /**
  * Phase 5: Windfall Interceptor Modal
@@ -30,10 +39,37 @@ export default function WindfallInterceptorModal({
   onDecline,
 }) {
   const [showDeclineConfirm, setShowDeclineConfirm] = useState(false);
+  const [showAccountSettings, setShowAccountSettings] = useState(false);
+  const [goalMapping, setGoalMapping] = useState(getGoalAccountMapping);
+  const [accounts, setAccounts] = useState(getStoredAccounts);
+
+  useEffect(() => {
+    const handleGoalUpdate = (e) => {
+      if (e.detail) setGoalMapping(e.detail);
+    };
+    const handleAccUpdate = () => {
+      setAccounts(getStoredAccounts());
+    };
+    window.addEventListener('finance-tracker:goal-accounts-updated', handleGoalUpdate);
+    window.addEventListener('finance-tracker:accounts-updated', handleAccUpdate);
+    return () => {
+      window.removeEventListener('finance-tracker:goal-accounts-updated', handleGoalUpdate);
+      window.removeEventListener('finance-tracker:accounts-updated', handleAccUpdate);
+    };
+  }, []);
+
+  const handleAccountChange = (role, accountId) => {
+    const next = { ...goalMapping, [role]: accountId };
+    setGoalMapping(next);
+    saveGoalAccountMapping(next);
+  };
 
   if (!isOpen) return null;
 
   const relocPct = Math.round((windfallAmount / 3000) * 100);
+
+  const relocationAcc = accounts.find((a) => a.id === goalMapping.relocationAccountId);
+  const carPayoffAcc = accounts.find((a) => a.id === goalMapping.carPayoffAccountId);
 
   return (
     <AnimatePresence>
@@ -139,6 +175,12 @@ export default function WindfallInterceptorModal({
                   <div className="text-[11px] text-cyan-200/80 mt-0.5">
                     Fills +{relocPct}% of $3,000 apartment & titling reserve • Completes Phase 1
                   </div>
+                  <div className="text-[10px] text-cyan-300 font-semibold mt-1 flex items-center gap-1">
+                    <span>Depositing into:</span>
+                    <span className="underline">
+                      {relocationAcc ? `${relocationAcc.name} (••••${relocationAcc.mask || '••••'})` : 'Default Relocation Buffer'}
+                    </span>
+                  </div>
                 </div>
               </div>
               <ArrowRight size={20} className="text-cyan-400 group-hover:translate-x-1 transition-transform shrink-0" />
@@ -165,6 +207,12 @@ export default function WindfallInterceptorModal({
                   </div>
                   <div className="text-[10px] text-zinc-400">
                     Optional early headstart on $9,000 auto loan (12.5% APR)
+                  </div>
+                  <div className="text-[10px] text-amber-300 font-semibold mt-1 flex items-center gap-1">
+                    <span>Paid via:</span>
+                    <span className="underline">
+                      {carPayoffAcc ? `${carPayoffAcc.name} (••••${carPayoffAcc.mask || '••••'})` : 'Default Checking Account'}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -194,6 +242,57 @@ export default function WindfallInterceptorModal({
                 Execute
               </span>
             </button>
+
+            {/* Quick Destination Account Selector */}
+            <div className="p-2.5 rounded-2xl bg-zinc-950/80 border border-zinc-800 text-xs">
+              <button
+                type="button"
+                onClick={() => setShowAccountSettings(!showAccountSettings)}
+                className="w-full flex items-center justify-between text-zinc-400 hover:text-white font-medium cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5 text-zinc-300">
+                  <Settings2 size={13} className="text-cyan-400" />
+                  <span>Choose Destination Accounts</span>
+                </div>
+                {showAccountSettings ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              </button>
+
+              {showAccountSettings && (
+                <div className="mt-2.5 pt-2 border-t border-zinc-800/80 space-y-2 text-[11px]">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <span className="text-zinc-300">Relocation Buffer:</span>
+                    <select
+                      value={goalMapping.relocationAccountId || ''}
+                      onChange={(e) => handleAccountChange('relocationAccountId', e.target.value)}
+                      className="px-2 py-1 rounded bg-zinc-900 border border-zinc-700 text-white text-[11px] focus:outline-none"
+                    >
+                      <option value="">Default Relocation Buffer</option>
+                      {accounts.filter((a) => a.type !== 'credit').map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name} ({a.mask ? `••••${a.mask}` : formatMoney(a.balance)})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <span className="text-zinc-300">Car Paydown Source:</span>
+                    <select
+                      value={goalMapping.carPayoffAccountId || ''}
+                      onChange={(e) => handleAccountChange('carPayoffAccountId', e.target.value)}
+                      className="px-2 py-1 rounded bg-zinc-900 border border-zinc-700 text-white text-[11px] focus:outline-none"
+                    >
+                      <option value="">Default Checking Account</option>
+                      {accounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name} ({a.mask ? `••••${a.mask}` : formatMoney(a.balance)})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Explicit Decline / Friction Dismiss */}

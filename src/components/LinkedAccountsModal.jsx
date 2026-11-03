@@ -19,8 +19,17 @@ import {
   Edit2,
   Check,
   PiggyBank,
+  Compass,
+  Car,
+  Target,
 } from 'lucide-react';
-import { formatMoney, getStoredAccounts, saveStoredAccounts } from '../lib/store.js';
+import {
+  formatMoney,
+  getStoredAccounts,
+  saveStoredAccounts,
+  getGoalAccountMapping,
+  saveGoalAccountMapping,
+} from '../lib/store.js';
 import {
   callPlaidApi,
   getPlaidConfig,
@@ -35,14 +44,25 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
   const [statusMessage, setStatusMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Plaid Configuration State
+  // Plaid Configuration State (Stored permanently)
   const initialPlaid = getPlaidConfig();
   const [plaidClientId, setPlaidClientId] = useState(initialPlaid.clientId);
   const [plaidSecret, setPlaidSecret] = useState(initialPlaid.secret);
   const [plaidEnv, setPlaidEnv] = useState(initialPlaid.env || 'sandbox');
-  const [showKeySettings, setShowKeySettings] = useState(!initialPlaid.clientId || !initialPlaid.secret);
+  const [showKeySettings, setShowKeySettings] = useState(false);
   const [keysSaved, setKeysSaved] = useState(false);
   const [isSyncingAll, setIsSyncingAll] = useState(false);
+
+  // Goal & Windfall Account Allocations
+  const [goalMapping, setGoalMapping] = useState(getGoalAccountMapping);
+
+  const handleGoalMappingChange = (role, accountId) => {
+    const updated = { ...goalMapping, [role]: accountId };
+    setGoalMapping(updated);
+    saveGoalAccountMapping(updated);
+    setStatusMessage('✓ Account assignment saved!');
+    setTimeout(() => setStatusMessage(''), 3000);
+  };
 
   // Manual Account Entry State
   const [showManualForm, setShowManualForm] = useState(false);
@@ -145,20 +165,21 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
 
   useEffect(() => {
     let active = true;
-    callPlaidApi('create-link-token', { account_type: 'bank' })
-      .then((data) => {
-        if (!active) return;
-        if (data?.link_token) {
-          setLinkToken(data.link_token);
-          setShowKeySettings(false);
-        }
-      })
-      .catch((err) => {
-        if (active) {
-          setErrorMessage(err.message || 'Plaid keys required');
-          setShowKeySettings(true);
-        }
-      });
+    const cfg = getPlaidConfig();
+    // Only attempt prefetch if credentials exist; never pop drawer open on failure
+    if (cfg.clientId && cfg.secret) {
+      callPlaidApi('create-link-token', { account_type: 'bank' })
+        .then((data) => {
+          if (!active) return;
+          if (data?.link_token) {
+            setLinkToken(data.link_token);
+          }
+        })
+        .catch((err) => {
+          // Keep key drawer collapsed; do not prompt user repeatedly
+          console.warn('Plaid token background prefetch:', err?.message || err);
+        });
+    }
 
     return () => {
       active = false;
@@ -169,8 +190,24 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
     const handleUpdate = () => {
       setAccounts(getStoredAccounts());
     };
+    const handleGoalUpdate = (e) => {
+      if (e.detail) setGoalMapping(e.detail);
+    };
+    const handlePlaidUpdate = (e) => {
+      if (e.detail) {
+        setPlaidClientId(e.detail.clientId || '');
+        setPlaidSecret(e.detail.secret || '');
+        setPlaidEnv(e.detail.env || 'sandbox');
+      }
+    };
     window.addEventListener('finance-tracker:accounts-updated', handleUpdate);
-    return () => window.removeEventListener('finance-tracker:accounts-updated', handleUpdate);
+    window.addEventListener('finance-tracker:goal-accounts-updated', handleGoalUpdate);
+    window.addEventListener('finance-tracker:plaid-updated', handlePlaidUpdate);
+    return () => {
+      window.removeEventListener('finance-tracker:accounts-updated', handleUpdate);
+      window.removeEventListener('finance-tracker:goal-accounts-updated', handleGoalUpdate);
+      window.removeEventListener('finance-tracker:plaid-updated', handlePlaidUpdate);
+    };
   }, []);
 
   const handleSavePlaidKeys = (e) => {
@@ -181,8 +218,13 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
     }
     savePlaidConfig(plaidClientId, plaidSecret, plaidEnv);
     setKeysSaved(true);
+    setShowKeySettings(false); // Remembered & automatically collapsed
     setErrorMessage('');
-    setTimeout(() => setKeysSaved(false), 2000);
+    setStatusMessage('✓ Plaid credentials saved! They will stay remembered across sessions.');
+    setTimeout(() => {
+      setKeysSaved(false);
+      setStatusMessage('');
+    }, 3500);
     requestLinkToken();
   };
 
@@ -773,6 +815,92 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
           )}
         </div>
 
+        {/* Goal & Windfall Account Assignments (Setting Account Roles) */}
+        <div className="mt-5 p-4 rounded-2xl bg-zinc-950/80 border border-zinc-800 space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-zinc-800/80">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-400">
+                <Target size={16} />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Goal & Windfall Account Allocations</h3>
+                <p className="text-[11px] text-zinc-400">Choose which accounts hold your goals & receive automations</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2.5 text-xs">
+            {/* 1. Relocation Buffer */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 p-2.5 rounded-xl bg-zinc-900 border border-zinc-800">
+              <div className="flex items-center gap-2">
+                <Compass size={16} className="text-cyan-400 shrink-0" />
+                <div>
+                  <span className="font-semibold text-white block">Relocation Buffer ($3,000)</span>
+                  <span className="text-[10px] text-zinc-400">Phase 1 priority destination</span>
+                </div>
+              </div>
+              <select
+                value={goalMapping.relocationAccountId || ''}
+                onChange={(e) => handleGoalMappingChange('relocationAccountId', e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-700 text-xs text-white focus:border-cyan-400 focus:outline-none"
+              >
+                <option value="">Default Relocation Buffer</option>
+                {accounts.filter(a => a.type !== 'credit').map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} ({a.mask ? `••••${a.mask}` : formatMoney(a.balance)})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 2. Car Loan Payoff */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 p-2.5 rounded-xl bg-zinc-900 border border-zinc-800">
+              <div className="flex items-center gap-2">
+                <Car size={16} className="text-amber-400 shrink-0" />
+                <div>
+                  <span className="font-semibold text-white block">Kia Loan Payoff Account</span>
+                  <span className="text-[10px] text-zinc-400">Phase 2 source/paydown account</span>
+                </div>
+              </div>
+              <select
+                value={goalMapping.carPayoffAccountId || ''}
+                onChange={(e) => handleGoalMappingChange('carPayoffAccountId', e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-700 text-xs text-white focus:border-amber-400 focus:outline-none"
+              >
+                <option value="">Default Checking Account</option>
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} ({a.mask ? `••••${a.mask}` : formatMoney(a.balance)})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 3. Emergency & Surplus */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 p-2.5 rounded-xl bg-zinc-900 border border-zinc-800">
+              <div className="flex items-center gap-2">
+                <ShieldCheck size={16} className="text-emerald-400 shrink-0" />
+                <div>
+                  <span className="font-semibold text-white block">Emergency & Surplus Reserve</span>
+                  <span className="text-[10px] text-zinc-400">Destination once $3k cap is met</span>
+                </div>
+              </div>
+              <select
+                value={goalMapping.emergencyAccountId || ''}
+                onChange={(e) => handleGoalMappingChange('emergencyAccountId', e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-700 text-xs text-white focus:border-emerald-400 focus:outline-none"
+              >
+                <option value="">Default Savings Reserve</option>
+                {accounts.filter(a => a.type !== 'credit').map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} ({a.mask ? `••••${a.mask}` : formatMoney(a.balance)})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
         {/* Link Actions */}
         <div className="mt-6 space-y-3 pt-4 border-t border-white/10">
           <div className="flex items-center justify-between">
@@ -865,16 +993,32 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
 
           {/* Plaid API Keys Setup Panel */}
           <div className="mt-4 rounded-2xl bg-white/5 border border-white/10 overflow-hidden">
-            <button
-              onClick={() => setShowKeySettings(!showKeySettings)}
-              className="w-full p-3.5 text-left flex items-center justify-between text-xs font-semibold text-gray-300 hover:text-white"
-            >
+            <div className="p-3.5 flex items-center justify-between text-xs font-semibold">
               <div className="flex items-center gap-2">
-                <KeyRound size={15} className="text-blue-400" />
-                <span>Plaid API Credentials</span>
+                {plaidClientId?.trim() && plaidSecret?.trim() ? (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                    <span className="text-emerald-400 font-bold">Plaid API Configured & Saved</span>
+                    <span className="text-[10px] text-gray-400 uppercase font-mono px-1.5 py-0.5 rounded bg-white/10">
+                      {plaidEnv}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <KeyRound size={15} className="text-blue-400" />
+                    <span className="text-gray-300">Plaid API Credentials</span>
+                  </>
+                )}
               </div>
-              {showKeySettings ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-            </button>
+              <button
+                type="button"
+                onClick={() => setShowKeySettings(!showKeySettings)}
+                className="text-xs text-blue-400 hover:text-blue-300 font-medium flex items-center gap-1 cursor-pointer"
+              >
+                <span>{showKeySettings ? 'Hide Setup' : (plaidClientId?.trim() ? 'Edit Keys' : 'Configure Keys')}</span>
+                {showKeySettings ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              </button>
+            </div>
 
             {showKeySettings && (
               <form onSubmit={handleSavePlaidKeys} className="p-3.5 pt-0 space-y-3 text-xs border-t border-white/5">

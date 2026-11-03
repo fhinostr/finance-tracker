@@ -2,6 +2,32 @@ import { useCallback, useEffect, useState } from 'react';
 
 const STORAGE_KEY = 'finance-tracker:v2';
 const STORAGE_KEY_ACCOUNTS = 'finance-tracker:linked-accounts:v1';
+export const STORAGE_KEY_GOAL_ACCOUNTS = 'finance-tracker:goal-accounts:v1';
+
+export function getGoalAccountMapping() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_GOAL_ACCOUNTS);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    // fallback
+  }
+  return {
+    relocationAccountId: '',
+    carPayoffAccountId: '',
+    emergencyAccountId: '',
+  };
+}
+
+export function saveGoalAccountMapping(mapping) {
+  try {
+    localStorage.setItem(STORAGE_KEY_GOAL_ACCOUNTS, JSON.stringify(mapping));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('finance-tracker:goal-accounts-updated', { detail: mapping }));
+    }
+  } catch {
+    // fallback
+  }
+}
 
 // Automatically clean up legacy mock seed data from v1
 try {

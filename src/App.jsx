@@ -31,6 +31,7 @@ import {
   Smartphone,
   Compass,
   Layers,
+  RefreshCw,
 } from 'lucide-react';
 import {
   useFinanceData,
@@ -44,6 +45,7 @@ import {
   categorizeAccounts,
   getCategoryStyle,
   normalizeCategory,
+  getGoalAccountMapping,
 } from './lib/store.js';
 import { generateOptimizationInsights } from './lib/optimization.js';
 import AddEntrySheet from './components/AddEntrySheet.jsx';
@@ -95,15 +97,34 @@ export default function PersonalFinanceTracker() {
       localStorage.setItem('behavioral_vehicle_loan', String(next));
       return next;
     });
+    const mapping = getGoalAccountMapping();
+    const stored = getStoredAccounts();
+    const sourceAcc = stored.find((a) => a.id === mapping.carPayoffAccountId);
     setIsWindfallModalOpen(false);
-    setSyncToast(`⚡ Routed +$${amount.toLocaleString()} directly to vehicle loan principal!`);
+    if (sourceAcc) {
+      setSyncToast(`⚡ Routed +$${amount.toLocaleString()} to loan principal via ${sourceAcc.name}!`);
+    } else {
+      setSyncToast(`⚡ Routed +$${amount.toLocaleString()} directly to vehicle loan principal!`);
+    }
     setTimeout(() => setSyncToast(''), 4000);
   };
 
   const handleRouteWindfallToRelocation = (amount) => {
     relocationSync.addFunds(amount);
+    const mapping = getGoalAccountMapping();
+    const stored = getStoredAccounts();
+    const targetAcc = stored.find((a) => a.id === mapping.relocationAccountId);
+    if (targetAcc) {
+      const updatedAccounts = stored.map((a) =>
+        a.id === targetAcc.id ? { ...a, balance: (Number(a.balance) || 0) + amount } : a,
+      );
+      saveStoredAccounts(updatedAccounts);
+      setLinkedAccounts(updatedAccounts);
+      setSyncToast(`⚡ Deposited +$${amount.toLocaleString()} into ${targetAcc.name}!`);
+    } else {
+      setSyncToast(`⚡ Deposited +$${amount.toLocaleString()} into Relocation Buffer!`);
+    }
     setIsWindfallModalOpen(false);
-    setSyncToast(`⚡ Deposited +$${amount.toLocaleString()} into HYSA Relocation Buffer!`);
     setTimeout(() => setSyncToast(''), 4000);
   };
 
@@ -114,6 +135,16 @@ export default function PersonalFinanceTracker() {
       return next;
     });
     relocationSync.addFunds(relocAmt);
+    const mapping = getGoalAccountMapping();
+    const stored = getStoredAccounts();
+    const targetAcc = stored.find((a) => a.id === mapping.relocationAccountId);
+    if (targetAcc) {
+      const updatedAccounts = stored.map((a) =>
+        a.id === targetAcc.id ? { ...a, balance: (Number(a.balance) || 0) + relocAmt } : a,
+      );
+      saveStoredAccounts(updatedAccounts);
+      setLinkedAccounts(updatedAccounts);
+    }
     setIsWindfallModalOpen(false);
     setSyncToast(`⚡ Routed $${debtAmt.toLocaleString()} to Loan & $${relocAmt.toLocaleString()} to Relocation!`);
     setTimeout(() => setSyncToast(''), 4000);
@@ -752,20 +783,20 @@ function DashboardTab({
   cashSurplus: _cashSurplus,
   debtSplit: _debtSplit,
   savingsSplit: _savingsSplit,
-  monthlyBurn = 0,
+  monthlyBurn: _monthlyBurn = 0,
   netCashFlow: _netCashFlow = 0,
-  currentNet = 0,
+  currentNet: _currentNet = 0,
   totalFixed = 0,
   debts = [],
   entries,
   linkedAccounts = [],
-  optimization,
+  optimization: _optimization,
   activeMonth: _activeMonth,
   onNavigateTab,
   onOpenLink,
-  onOpenSync: _onOpenSync,
+  onOpenSync,
   onDelete: _onDelete,
-  onAdd: _onAdd,
+  onAdd,
 }) {
   const {
     bankAccounts,
@@ -775,8 +806,7 @@ function DashboardTab({
     totalPortfolioValue,
   } = categorizeAccounts(linkedAccounts);
 
-  const netLiquid = totalCashInBank - totalCreditBalance;
-  const netLiquidWithInvestments = netLiquid + totalPortfolioValue;
+  const netAvailable = totalCashInBank - totalCreditBalance;
 
   // 3 most recent transactions preview
   const recentTransactionsPreview = useMemo(() => {
@@ -786,226 +816,188 @@ function DashboardTab({
       .slice(0, 3);
   }, [entries]);
 
-  // Cash runway calculation
-  const safeMonthlyBurn = monthlyBurn > 0 ? monthlyBurn : (totalFixed + totalVariable) || 1;
-  const checkingRunwayMonths = (totalCashInBank / safeMonthlyBurn).toFixed(1);
-
-  // Suggestions data
-  const recoverableMonthly = optimization?.totalPotentialSavings || 0;
-  const healthScore = optimization?.healthScore || 80;
+  // Relocation Goal Progress (defaults to $1,350 out of $3,000)
+  const relocationSaved = useMemo(() => {
+    try {
+      const saved = localStorage.getItem('relocation_hysa_balance');
+      return saved !== null ? Number(saved) : 1350;
+    } catch {
+      return 1350;
+    }
+  }, []);
+  const relocationTarget = 3000;
+  const relocationPct = Math.min(100, Math.round((relocationSaved / relocationTarget) * 100));
 
   return (
     <div className="space-y-6">
-      {/* 1. Executive Financial Snapshot */}
+      {/* 1. Welcoming Snapshot Header */}
       <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-zinc-900/95 via-zinc-900/80 to-zinc-950/95 border border-zinc-800 shadow-2xl backdrop-blur-2xl space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-800">
           <div>
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-400 block">
-              Connected Net Liquid Balances
-            </span>
-            <div className="flex items-baseline gap-2 mt-0.5">
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">
+                Simple Overview
+              </span>
+            </div>
+            <div className="flex items-baseline gap-2 mt-1">
               <h2 className="text-3xl sm:text-4xl font-black text-white">
-                {formatMoney(netLiquid)}
+                {formatMoney(netAvailable)}
               </h2>
               <span className="text-xs text-zinc-400 font-medium">
-                ({formatMoney(netLiquidWithInvestments)} incl. Portfolio)
+                total net cash on hand
               </span>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onOpenLink}
-            className="self-start sm:self-auto px-3 py-1.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 text-xs font-semibold text-zinc-200 border border-zinc-700 transition-colors cursor-pointer"
-          >
-            Manage Accounts ({linkedAccounts.length})
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onOpenLink}
+              className="px-3.5 py-2 rounded-xl bg-zinc-800/90 hover:bg-zinc-700 text-xs font-semibold text-zinc-200 border border-zinc-700 transition-colors cursor-pointer flex items-center gap-1.5"
+            >
+              <Building2 size={14} className="text-blue-400" />
+              <span>Accounts ({linkedAccounts.length})</span>
+            </button>
+            {onOpenSync && (
+              <button
+                type="button"
+                onClick={onOpenSync}
+                className="px-3.5 py-2 rounded-xl bg-zinc-800/90 hover:bg-zinc-700 text-xs font-semibold text-zinc-300 border border-zinc-700 transition-colors cursor-pointer flex items-center gap-1.5"
+                title="Sync to Phone"
+              >
+                <Smartphone size={13} className="text-emerald-400" />
+                <span>Sync</span>
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* 3 Quick Glances */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        {/* 3 Clear, Beginner-Friendly Number Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* Card 1: Cash in Bank */}
           <button
             type="button"
             onClick={() => onNavigateTab('wealth')}
-            className="p-3.5 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-blue-500/40 text-left transition-all cursor-pointer group"
+            className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-blue-500/50 text-left transition-all cursor-pointer group shadow-sm"
           >
-            <div className="flex items-center justify-between text-zinc-400 mb-1">
-              <span className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 text-blue-400">
-                <Building2 size={14} /> Cash in Bank
+            <div className="flex items-center justify-between text-zinc-400 mb-1.5">
+              <span className="text-xs font-bold flex items-center gap-1.5 text-blue-400">
+                <Building2 size={15} /> Cash in Accounts
               </span>
               <ArrowRight size={13} className="text-zinc-600 group-hover:text-blue-400 group-hover:translate-x-0.5 transition-all" />
             </div>
-            <div className="text-xl font-black text-white">{formatMoney(totalCashInBank)}</div>
-            <p className="text-[10px] text-zinc-500 mt-0.5">{bankAccounts.length} checking account</p>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onNavigateTab('debts')}
-            className="p-3.5 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-amber-500/40 text-left transition-all cursor-pointer group"
-          >
-            <div className="flex items-center justify-between text-zinc-400 mb-1">
-              <span className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 text-amber-400">
-                <CreditCard size={14} /> Credit Cards (Owed)
-              </span>
-              <ArrowRight size={13} className="text-zinc-600 group-hover:text-amber-400 group-hover:translate-x-0.5 transition-all" />
-            </div>
-            <div className="text-xl font-black text-amber-400">
-              {totalCreditBalance > 0 ? `-${formatMoney(totalCreditBalance)}` : '$0.00'}
-            </div>
-            <p className="text-[10px] text-zinc-500 mt-0.5">
-              {creditAccounts.length} active liability
+            <div className="text-2xl font-black text-white">{formatMoney(totalCashInBank)}</div>
+            <p className="text-[11px] text-zinc-400 mt-1">
+              {bankAccounts.length > 0 ? `${bankAccounts.length} account connected` : 'Available to spend'}
             </p>
           </button>
 
+          {/* Card 2: Debts Owed */}
+          <button
+            type="button"
+            onClick={() => onNavigateTab('debts')}
+            className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-amber-500/50 text-left transition-all cursor-pointer group shadow-sm"
+          >
+            <div className="flex items-center justify-between text-zinc-400 mb-1.5">
+              <span className="text-xs font-bold flex items-center gap-1.5 text-amber-400">
+                <CreditCard size={15} /> Credit & Debts Owed
+              </span>
+              <ArrowRight size={13} className="text-zinc-600 group-hover:text-amber-400 group-hover:translate-x-0.5 transition-all" />
+            </div>
+            <div className="text-2xl font-black text-amber-400">
+              {totalCreditBalance > 0 ? `-${formatMoney(totalCreditBalance)}` : '$0.00'}
+            </div>
+            <p className="text-[11px] text-zinc-400 mt-1">
+              {creditAccounts.length > 0 ? `${creditAccounts.length} card balance` : 'No credit card debt'}
+            </p>
+          </button>
+
+          {/* Card 3: Investments */}
           <button
             type="button"
             onClick={() => onNavigateTab('wealth')}
-            className="p-3.5 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-emerald-500/40 text-left transition-all cursor-pointer group"
+            className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-emerald-500/50 text-left transition-all cursor-pointer group shadow-sm"
           >
-            <div className="flex items-center justify-between text-zinc-400 mb-1">
-              <span className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 text-emerald-400">
-                <TrendingUp size={14} /> Portfolio
+            <div className="flex items-center justify-between text-zinc-400 mb-1.5">
+              <span className="text-xs font-bold flex items-center gap-1.5 text-emerald-400">
+                <TrendingUp size={15} /> Investments & Stocks
               </span>
               <ArrowRight size={13} className="text-zinc-600 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-all" />
             </div>
-            <div className="text-xl font-black text-emerald-400">{formatMoney(totalPortfolioValue)}</div>
-            <p className="text-[10px] text-zinc-500 mt-0.5">Robinhood Roth & Individual</p>
+            <div className="text-2xl font-black text-emerald-400">{formatMoney(totalPortfolioValue)}</div>
+            <p className="text-[11px] text-zinc-400 mt-1">Robinhood & retirement assets</p>
+          </button>
+        </div>
+      </div>
+
+      {/* 2. Visual "Current Focus" Progress Banner (Zero Jargon) */}
+      <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-cyan-950/40 via-zinc-900 to-indigo-950/30 border border-cyan-500/30 shadow-xl backdrop-blur-xl space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="p-1.5 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+              <Compass size={16} />
+            </span>
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-400 block">
+                Primary Mission • Phase 1
+              </span>
+              <h3 className="text-base font-bold text-white">Save $3,000 for Move</h3>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigateTab('optimize')}
+            className="self-start sm:self-auto px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 text-xs font-bold border border-cyan-500/30 flex items-center gap-1 transition-all cursor-pointer"
+          >
+            <span>View Goal & Simulators</span>
+            <ArrowRight size={13} />
           </button>
         </div>
 
-        {/* Runway & Burn Rate Meter */}
-        <div className="p-3.5 rounded-2xl bg-zinc-950/80 border border-zinc-800/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
-              <ShieldCheck size={18} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-white">Checking Runway:</span>
-                <span className="font-mono text-emerald-400 font-extrabold">{checkingRunwayMonths} months</span>
-              </div>
-              <p className="text-[11px] text-zinc-400">
-                Monthly burn rate: {formatMoney(safeMonthlyBurn)} ({formatMoney(totalFixed)} fixed + {formatMoney(totalVariable)} variable)
-              </p>
-            </div>
-          </div>
-          <div className="text-left sm:text-right">
-            <span className="text-[10px] uppercase font-bold text-zinc-500 block">Monthly Net Inflow</span>
-            <span className="font-mono font-bold text-emerald-400">+{formatMoney(currentNet)}/mo</span>
-          </div>
-        </div>
-      </div>
-
-      {/* 2. General Suggestions & Actionable Highlights */}
-      <div className="p-6 rounded-3xl bg-gradient-to-br from-indigo-950/40 via-zinc-900/90 to-zinc-950 border border-indigo-500/25 shadow-2xl backdrop-blur-2xl space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
-          <div className="flex items-center gap-2">
-            <span className="p-1.5 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
-              <Sparkles size={16} />
+        {/* Visual Progress Bar */}
+        <div className="space-y-1.5 pt-1">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-zinc-300 font-medium">
+              Saved <strong className="text-white font-mono">{formatMoney(relocationSaved)}</strong> of {formatMoney(relocationTarget)}
             </span>
-            <h3 className="text-base font-bold text-white">General Suggestions & Strategy</h3>
+            <span className="font-bold text-cyan-400">{relocationPct}% Funded</span>
           </div>
-          <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-            Health: {healthScore}/100
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {/* Suggestion 1: Urgent Relocation Milestone (Phase 1) */}
-          <div className="p-4 rounded-2xl bg-zinc-950/70 border border-cyan-500/30 flex flex-col justify-between space-y-3">
-            <div className="space-y-1">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-cyan-400 flex items-center gap-1">
-                <Compass size={12} /> Phase 1 Priority • Urgent
-              </span>
-              <div className="text-base font-extrabold text-white">
-                $3,000 Relocation Reserve
-              </div>
-              <p className="text-[11px] text-zinc-400 leading-relaxed">
-                Current active priority: fully lock your $3,000 apartment security deposit and out-of-state titling reserve.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => onNavigateTab('optimize')}
-              className="w-full py-2 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-850 text-xs font-bold text-cyan-300 hover:text-white border border-zinc-800 flex items-center justify-between transition-all cursor-pointer group"
-            >
-              <span>Track in Optimize</span>
-              <ArrowRight size={13} className="group-hover:translate-x-1 transition-transform" />
-            </button>
+          <div className="w-full h-3 rounded-full bg-zinc-950 border border-zinc-800 overflow-hidden p-0.5">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-teal-400 transition-all duration-700"
+              style={{ width: `${relocationPct}%` }}
+            />
           </div>
-
-          {/* Suggestion 2: Debt Acceleration (Phase 2 - Starts in January) */}
-          <div className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800 flex flex-col justify-between space-y-3">
-            <div className="space-y-1">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-400 flex items-center gap-1">
-                <Car size={12} /> Phase 2 • Starts in January
-              </span>
-              <div className="text-base font-extrabold text-white">
-                Kia Loan Payoff Sprint
-              </div>
-              <p className="text-[11px] text-zinc-400 leading-relaxed">
-                Car payoff plan begins in January once relocation buffer is filled. Pre-plan your $370–$570 extra principal to save ~$2,015+ interest.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => onNavigateTab('debts')}
-              className="w-full py-2 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-850 text-xs font-bold text-amber-300 hover:text-white border border-zinc-800 flex items-center justify-between transition-all cursor-pointer group"
-            >
-              <span>Review in Debts & Bills</span>
-              <ArrowRight size={13} className="group-hover:translate-x-1 transition-transform" />
-            </button>
-          </div>
-
-          {/* Suggestion 3: Spending Trimming */}
-          <div className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800 flex flex-col justify-between space-y-3">
-            <div className="space-y-1">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-rose-400 flex items-center gap-1">
-                <Scissors size={12} /> Spending Optimization
-              </span>
-              <div className="text-base font-extrabold text-white">
-                +{formatMoney(recoverableMonthly)}/mo recoverable
-              </div>
-              <p className="text-[11px] text-zinc-400 leading-relaxed">
-                Recover unessential grocery leaks, dining spikes, and duplicate streaming subscriptions to fuel Phase 1.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => onNavigateTab('optimize')}
-              className="w-full py-2 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-850 text-xs font-bold text-indigo-300 hover:text-white border border-zinc-800 flex items-center justify-between transition-all cursor-pointer group"
-            >
-              <span>Review in Optimize</span>
-              <ArrowRight size={13} className="group-hover:translate-x-1 transition-transform" />
-            </button>
-          </div>
+          <p className="text-[11px] text-zinc-400 pt-1 leading-relaxed">
+            First priority is securing the $3,000 apartment move fund. The car loan payoff sprint starts right after in January.
+          </p>
         </div>
       </div>
 
-      {/* 3. In-Depth Drill Down Navigation Hub */}
+      {/* 3. Explore & Drill Down (4 Clear Doors) */}
       <div className="space-y-3">
         <div className="flex items-center justify-between px-1">
           <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-400">
-            Explore Details In Depth
+            Explore Your Finances
           </h3>
-          <span className="text-[11px] text-zinc-500">Click any tab to review</span>
+          <span className="text-[11px] text-zinc-500">Tap any section to see details</span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {/* Card A: Spending & Categories */}
+          {/* Tile 1: Spending */}
           <button
             type="button"
             onClick={() => onNavigateTab('spending')}
             className="p-4 rounded-3xl bg-zinc-900/80 hover:bg-zinc-850 border border-zinc-800 hover:border-blue-500/40 text-left transition-all cursor-pointer group shadow-lg"
           >
             <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-blue-500/20 text-blue-400 border border-blue-500/30 flex items-center justify-center">
                   <CreditCard size={18} />
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-white group-hover:text-blue-300 transition-colors">
-                    Spending & Variable Budgets
+                    Spending
                   </h4>
                   <span className="text-[11px] text-zinc-400">
                     {formatMoney(totalVariable)} logged this month
@@ -1015,24 +1007,24 @@ function DashboardTab({
               <ArrowRight size={16} className="text-zinc-600 group-hover:text-blue-400 group-hover:translate-x-1 transition-all" />
             </div>
             <p className="text-xs text-zinc-400">
-              Review category breakdowns, grocery vs dining spend, and full transaction history.
+              See what you spent on groceries, dining out, gas, and shopping.
             </p>
           </button>
 
-          {/* Card B: Subscriptions & Debts */}
+          {/* Tile 2: Bills & Debts */}
           <button
             type="button"
             onClick={() => onNavigateTab('debts')}
             className="p-4 rounded-3xl bg-zinc-900/80 hover:bg-zinc-850 border border-zinc-800 hover:border-amber-500/40 text-left transition-all cursor-pointer group shadow-lg"
           >
             <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center">
                   <Car size={18} />
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-white group-hover:text-amber-300 transition-colors">
-                    Subscriptions & Debts
+                    Bills & Debts
                   </h4>
                   <span className="text-[11px] text-zinc-400">
                     {formatMoney(totalFixed)}/mo fixed • {debts.length} active debts
@@ -1042,45 +1034,45 @@ function DashboardTab({
               <ArrowRight size={16} className="text-zinc-600 group-hover:text-amber-400 group-hover:translate-x-1 transition-all" />
             </div>
             <p className="text-xs text-zinc-400">
-              Review recurring subscriptions, rent, auto insurance, and credit liabilities.
+              Review monthly subscriptions, rent, auto insurance, and car loan payoff plan.
             </p>
           </button>
 
-          {/* Card C: Behavioral Optimization */}
+          {/* Tile 3: Simulators & Optimization */}
           <button
             type="button"
             onClick={() => onNavigateTab('optimize')}
             className="p-4 rounded-3xl bg-zinc-900/80 hover:bg-zinc-850 border border-zinc-800 hover:border-indigo-500/40 text-left transition-all cursor-pointer group shadow-lg"
           >
             <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center">
                   <Sparkles size={18} />
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-white group-hover:text-indigo-300 transition-colors">
-                    Behavioral Execution Engine
+                    Smart Tools & Simulators
                   </h4>
                   <span className="text-[11px] text-zinc-400">
-                    5-Phase optimization system
+                    Tax slider, payoff gauge & waterfall
                   </span>
                 </div>
               </div>
               <ArrowRight size={16} className="text-zinc-600 group-hover:text-indigo-400 group-hover:translate-x-1 transition-all" />
             </div>
             <p className="text-xs text-zinc-400">
-              Interactive waterfall, paydown slider, food tracker, relocation ring & windfall modal.
+              Interactive calculators to simulate 401(k) tax savings, payoff speeds, and saving tips.
             </p>
           </button>
 
-          {/* Card D: Investments & Wealth */}
+          {/* Tile 4: Investments & Wealth */}
           <button
             type="button"
             onClick={() => onNavigateTab('wealth')}
             className="p-4 rounded-3xl bg-zinc-900/80 hover:bg-zinc-850 border border-zinc-800 hover:border-emerald-500/40 text-left transition-all cursor-pointer group shadow-lg"
           >
             <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center">
                   <TrendingUp size={18} />
                 </div>
@@ -1089,24 +1081,24 @@ function DashboardTab({
                     Investments & Wealth
                   </h4>
                   <span className="text-[11px] text-zinc-400">
-                    {formatMoney(totalPortfolioValue)} portfolio assets
+                    {formatMoney(totalPortfolioValue)} portfolio
                   </span>
                 </div>
               </div>
               <ArrowRight size={16} className="text-zinc-600 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all" />
             </div>
             <p className="text-xs text-zinc-400">
-              Surplus waterfall auto-pilot, Roth IRA tracking, and 10y/20y compounding engine.
+              Track your Robinhood stocks, Roth IRA, and 10-year wealth compounding chart.
             </p>
           </button>
         </div>
       </div>
 
-      {/* 4. Compact Recent Activity Snapshot */}
+      {/* 4. Recent Purchases (Simple & Clean) */}
       {recentTransactionsPreview.length > 0 && (
         <div className="p-5 rounded-3xl bg-zinc-900/70 border border-zinc-800 shadow-xl backdrop-blur-xl space-y-3">
           <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
-            <span className="text-xs font-bold text-zinc-300">Recent Activity</span>
+            <span className="text-xs font-bold text-zinc-300">Recent Purchases</span>
             <button
               type="button"
               onClick={() => onNavigateTab('spending')}
@@ -1119,9 +1111,9 @@ function DashboardTab({
           <div className="space-y-2">
             {recentTransactionsPreview.map((tx) => (
               <div key={tx.id} className="flex justify-between items-center text-xs py-1">
-                <div className="flex items-center gap-2 truncate">
+                <div className="flex items-center gap-2.5 truncate">
                   <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
-                  <span className="text-zinc-200 truncate">{tx.description || tx.category}</span>
+                  <span className="text-zinc-200 truncate">{tx.description || tx.name || tx.category}</span>
                 </div>
                 <span className="font-mono font-bold text-zinc-200 shrink-0">
                   {formatMoney(tx.amount)}
@@ -1131,6 +1123,38 @@ function DashboardTab({
           </div>
         </div>
       )}
+
+      {/* 5. Friendly Quick Action Bar */}
+      <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+        {onAdd && (
+          <button
+            type="button"
+            onClick={onAdd}
+            className="px-4 py-2.5 rounded-2xl bg-white text-black hover:bg-zinc-200 text-xs font-bold flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+          >
+            <Plus size={14} />
+            <span>Log an Expense</span>
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onOpenLink}
+          className="px-4 py-2.5 rounded-2xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold flex items-center gap-1.5 border border-zinc-700 active:scale-95 transition-all cursor-pointer"
+        >
+          <Building2 size={14} className="text-blue-400" />
+          <span>Linked Accounts</span>
+        </button>
+        {onOpenSync && (
+          <button
+            type="button"
+            onClick={onOpenSync}
+            className="px-4 py-2.5 rounded-2xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold flex items-center gap-1.5 border border-zinc-700 active:scale-95 transition-all cursor-pointer"
+          >
+            <RefreshCw size={14} className="text-emerald-400" />
+            <span>Sync to Phone</span>
+          </button>
+        )}
+      </div>
     </div>
   );
 }
