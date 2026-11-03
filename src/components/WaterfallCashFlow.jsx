@@ -34,10 +34,10 @@ export default function WaterfallCashFlow({
   const totalOutflows = rentExpense + groceryExpense + otherFixed; // $3,200
   const surplusTotal = Math.max(0, netIncome - totalOutflows); // exactly $1,960
 
-  // Interactive surplus bucket allocations (default: $800 debt sprint, $600 relocation, $560 wealth = $1,960)
-  const [debtAlloc, setDebtAlloc] = useState(800);
-  const [relocAlloc, setRelocAlloc] = useState(600);
-  const wealthAlloc = Math.max(0, surplusTotal - debtAlloc - relocAlloc);
+  // Interactive surplus bucket allocations (Phase 1: Relocation Buffer is urgent; Phase 2: Kia Debt starts January)
+  const [relocAlloc, setRelocAlloc] = useState(1200);
+  const [debtAlloc, setDebtAlloc] = useState(400);
+  const wealthAlloc = Math.max(0, surplusTotal - relocAlloc - debtAlloc);
 
   const steps = [
     {
@@ -203,31 +203,16 @@ export default function WaterfallCashFlow({
               Test Route Your $1,960 Surplus:
             </span>
 
-            {/* Allocation 1: Debt */}
-            <div className="p-3 rounded-xl bg-zinc-950/70 border border-zinc-800 space-y-1.5">
-              <div className="flex justify-between text-xs">
-                <span className="text-zinc-300 flex items-center gap-1.5 font-semibold">
-                  <Car size={13} className="text-amber-400" /> Kia Loan Payoff Sprint
-                </span>
-                <span className="font-mono font-bold text-amber-400">{formatMoney(debtAlloc)}/mo</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={surplusTotal - relocAlloc}
-                step={50}
-                value={debtAlloc}
-                onChange={(e) => setDebtAlloc(parseInt(e.target.value, 10))}
-                className="w-full h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
-              />
-            </div>
-
-            {/* Allocation 2: Relocation Buffer */}
-            <div className="p-3 rounded-xl bg-zinc-950/70 border border-zinc-800 space-y-1.5">
-              <div className="flex justify-between text-xs">
-                <span className="text-zinc-300 flex items-center gap-1.5 font-semibold">
-                  <Compass size={13} className="text-cyan-400" /> Jan 2027 Relocation Buffer
-                </span>
+            {/* Allocation 1: Urgent Relocation Buffer (Phase 1) */}
+            <div className="p-3 rounded-xl bg-zinc-950/70 border border-cyan-500/30 space-y-1.5">
+              <div className="flex justify-between items-center text-xs">
+                <div className="flex items-center gap-1.5 font-semibold text-zinc-300">
+                  <Compass size={13} className="text-cyan-400" />
+                  <span>Jan 2027 Relocation Buffer</span>
+                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300">
+                    Phase 1 • Urgent
+                  </span>
+                </div>
                 <span className="font-mono font-bold text-cyan-400">{formatMoney(relocAlloc)}/mo</span>
               </div>
               <input
@@ -238,6 +223,29 @@ export default function WaterfallCashFlow({
                 value={relocAlloc}
                 onChange={(e) => setRelocAlloc(parseInt(e.target.value, 10))}
                 className="w-full h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+              />
+            </div>
+
+            {/* Allocation 2: Kia Debt Acceleration (Phase 2 - Starts Jan) */}
+            <div className="p-3 rounded-xl bg-zinc-950/70 border border-zinc-800 space-y-1.5">
+              <div className="flex justify-between items-center text-xs">
+                <div className="flex items-center gap-1.5 font-semibold text-zinc-300">
+                  <Car size={13} className="text-amber-400" />
+                  <span>Kia Loan Payoff Sprint</span>
+                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-300 border border-amber-500/25">
+                    Phase 2 • Starts Jan
+                  </span>
+                </div>
+                <span className="font-mono font-bold text-amber-400">{formatMoney(debtAlloc)}/mo</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={surplusTotal - relocAlloc}
+                step={50}
+                value={debtAlloc}
+                onChange={(e) => setDebtAlloc(parseInt(e.target.value, 10))}
+                className="w-full h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
               />
             </div>
 

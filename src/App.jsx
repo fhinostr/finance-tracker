@@ -911,40 +911,40 @@ function DashboardTab({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {/* Suggestion 1: Spending Trimming */}
-          <div className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800 flex flex-col justify-between space-y-3">
+          {/* Suggestion 1: Urgent Relocation Milestone (Phase 1) */}
+          <div className="p-4 rounded-2xl bg-zinc-950/70 border border-cyan-500/30 flex flex-col justify-between space-y-3">
             <div className="space-y-1">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-rose-400 flex items-center gap-1">
-                <Scissors size={12} /> Spending Optimization
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-cyan-400 flex items-center gap-1">
+                <Compass size={12} /> Phase 1 Priority • Urgent
               </span>
               <div className="text-base font-extrabold text-white">
-                +{formatMoney(recoverableMonthly)}/mo recoverable
+                $3,000 Relocation Reserve
               </div>
               <p className="text-[11px] text-zinc-400 leading-relaxed">
-                Recover unessential grocery leaks, dining spikes, and duplicate streaming subscriptions.
+                Current active priority: fully lock your $3,000 apartment security deposit and out-of-state titling reserve.
               </p>
             </div>
             <button
               type="button"
               onClick={() => onNavigateTab('optimize')}
-              className="w-full py-2 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-850 text-xs font-bold text-indigo-300 hover:text-white border border-zinc-800 flex items-center justify-between transition-all cursor-pointer group"
+              className="w-full py-2 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-850 text-xs font-bold text-cyan-300 hover:text-white border border-zinc-800 flex items-center justify-between transition-all cursor-pointer group"
             >
-              <span>Review in Optimize</span>
+              <span>Track in Optimize</span>
               <ArrowRight size={13} className="group-hover:translate-x-1 transition-transform" />
             </button>
           </div>
 
-          {/* Suggestion 2: Debt Acceleration */}
+          {/* Suggestion 2: Debt Acceleration (Phase 2 - Starts in January) */}
           <div className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800 flex flex-col justify-between space-y-3">
             <div className="space-y-1">
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-400 flex items-center gap-1">
-                <Car size={12} /> Debt Liquidation
+                <Car size={12} /> Phase 2 • Starts in January
               </span>
               <div className="text-base font-extrabold text-white">
-                Save ~$2,015+ interest
+                Kia Loan Payoff Sprint
               </div>
               <p className="text-[11px] text-zinc-400 leading-relaxed">
-                Increase monthly payment on your $9,000 Kia loan (12.5% APR) from $230 to $350+ to eliminate ~38 months.
+                Car payoff plan begins in January once relocation buffer is filled. Pre-plan your $370–$570 extra principal to save ~$2,015+ interest.
               </p>
             </div>
             <button
@@ -957,25 +957,25 @@ function DashboardTab({
             </button>
           </div>
 
-          {/* Suggestion 3: Relocation Milestone */}
+          {/* Suggestion 3: Spending Trimming */}
           <div className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800 flex flex-col justify-between space-y-3">
             <div className="space-y-1">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-cyan-400 flex items-center gap-1">
-                <Compass size={12} /> Relocation Goal (Jan 2027)
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-rose-400 flex items-center gap-1">
+                <Scissors size={12} /> Spending Optimization
               </span>
               <div className="text-base font-extrabold text-white">
-                $3,000 Milestone Target
+                +{formatMoney(recoverableMonthly)}/mo recoverable
               </div>
               <p className="text-[11px] text-zinc-400 leading-relaxed">
-                Maintain steady automated transfers into HYSA (4.5% APY) to secure apartment security deposit & titling.
+                Recover unessential grocery leaks, dining spikes, and duplicate streaming subscriptions to fuel Phase 1.
               </p>
             </div>
             <button
               type="button"
               onClick={() => onNavigateTab('optimize')}
-              className="w-full py-2 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-850 text-xs font-bold text-cyan-300 hover:text-white border border-zinc-800 flex items-center justify-between transition-all cursor-pointer group"
+              className="w-full py-2 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-850 text-xs font-bold text-indigo-300 hover:text-white border border-zinc-800 flex items-center justify-between transition-all cursor-pointer group"
             >
-              <span>Track in Optimize</span>
+              <span>Review in Optimize</span>
               <ArrowRight size={13} className="group-hover:translate-x-1 transition-transform" />
             </button>
           </div>
@@ -2425,67 +2425,67 @@ function OptimizationTab({
 
       {subTab === 'simulators' ? (
         <div className="space-y-6">
-          {/* 1. Tax Shield Slider */}
-          <TaxShieldSlider annualSalary={90000} marginalTaxRate={0.30} />
+          {/* 1. Relocation Goal Widget (Phase 1 Priority • $3,000 Cap) */}
+          <RelocationGoalWidget cap={3000} emergencyTarget={10000} />
 
-          {/* 2. Kia Payoff Gauge */}
-          <KiaPayoffGauge loanBalance={9000} annualApr={0.125} baseMinPayment={230} />
-
-          {/* 3. Waterfall Cash Flow */}
+          {/* 2. Waterfall Cash Flow (Prioritizing Relocation) */}
           <WaterfallCashFlow netIncome={5160} rentExpense={2000} groceryExpense={330} />
 
-          {/* 4. Relocation Goal Widget */}
-          <RelocationGoalWidget cap={3000} emergencyTarget={10000} />
+          {/* 3. Kia Payoff Gauge (Phase 2 • Starts in January) */}
+          <KiaPayoffGauge loanBalance={9000} annualApr={0.125} baseMinPayment={230} />
+
+          {/* 4. Tax Shield Slider */}
+          <TaxShieldSlider annualSalary={90000} marginalTaxRate={0.30} />
         </div>
       ) : subTab === 'behavioral' ? (
         <div className="space-y-6">
           {/* Active Behavioral Overview & Windfall Interceptor Test CTA */}
-          <div className="p-4 rounded-3xl bg-gradient-to-r from-amber-500/15 via-zinc-900 to-indigo-950/40 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xl">
+          <div className="p-4 rounded-3xl bg-gradient-to-r from-cyan-500/15 via-zinc-900 to-indigo-950/40 border border-cyan-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xl">
             <div className="space-y-0.5">
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  Active Behavioral Execution
+                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                  Phase 1 Focus: Relocation Buffer
                 </span>
-                <span className="text-[10px] text-zinc-400">January 2027 Milestone</span>
+                <span className="text-[10px] text-zinc-400">Car Plan Starts in January</span>
               </div>
               <h3 className="text-sm font-bold text-white">
-                Cash Flow Optimization & Accelerated Liquidation
+                Urgent Milestone Funnel: $3,000 Relocation Reserve
               </h3>
               <p className="text-xs text-zinc-400">
-                Shift UX from passive tracking to active behavioral execution.
+                Locking in apartment deposit & titling buffer before launching vehicle liquidation.
               </p>
             </div>
             <button
               type="button"
               onClick={onTriggerWindfall}
-              className="px-3.5 py-2 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 text-black font-extrabold text-xs flex items-center justify-center gap-1.5 hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-amber-500/20 cursor-pointer self-start sm:self-auto shrink-0"
+              className="px-3.5 py-2 rounded-2xl bg-gradient-to-r from-cyan-400 to-teal-400 text-black font-extrabold text-xs flex items-center justify-center gap-1.5 hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-cyan-500/20 cursor-pointer self-start sm:self-auto shrink-0"
             >
               <Sparkles size={14} className="animate-spin" />
-              <span>Simulate Windfall ($980 Bonus)</span>
+              <span>Simulate Windfall ($980)</span>
             </button>
           </div>
 
-          {/* Phase 1: The Take-Home Waterfall Component (Framer Motion) */}
+          {/* 1. Take-Home Waterfall Component (Framer Motion) */}
           <TakeHomeWaterfall
             actualNetIncome={actualNetIncome}
             useCustomBaseline={true}
           />
 
-          {/* Phase 2: Accelerated Principal Paydown Widget */}
-          <AcceleratedPrincipalPaydown
-            principalBalance={vehicleLoanBalance}
-            interestRate={0.125}
+          {/* 2. Relocation Buffer Progress Ring (Phase 1 Priority) */}
+          <RelocationBufferRing
+            targetGoal={3000}
+            syncHook={relocationSync}
           />
 
-          {/* Phase 3: Bifurcated Food Tracker */}
+          {/* 3. Bifurcated Food Tracker */}
           <BifurcatedFoodTracker
             onAddFoodEntry={onAddFoodEntry}
           />
 
-          {/* Phase 4: Relocation Buffer Progress Ring */}
-          <RelocationBufferRing
-            targetGoal={3000}
-            syncHook={relocationSync}
+          {/* 4. Accelerated Principal Paydown Widget (Phase 2 - Starts January) */}
+          <AcceleratedPrincipalPaydown
+            principalBalance={vehicleLoanBalance}
+            interestRate={0.125}
           />
         </div>
       ) : (
