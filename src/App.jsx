@@ -87,7 +87,7 @@ export default function PersonalFinanceTracker() {
   });
   const [vehicleLoanBalance, setVehicleLoanBalance] = useState(() => {
     const saved = localStorage.getItem('behavioral_vehicle_loan');
-    return saved !== null ? Number(saved) : 9000;
+    return saved !== null ? Number(saved) : 0;
   });
   const relocationSync = useSavingsSync(3000);
 
@@ -627,8 +627,8 @@ export default function PersonalFinanceTracker() {
                 totalVariable={totalVariable}
                 activeMonth={activeMonth}
                 onNavigateTab={setActiveTab}
-                actualNetIncome={5475}
-                vehicleLoanBalance={vehicleLoanBalance}
+                actualNetIncome={currentNet}
+                vehicleLoanBalance={debts.find(d => (d.name||'').toLowerCase().includes('car') || (d.name||'').toLowerCase().includes('kia') || (d.name||'').toLowerCase().includes('loan'))?.balance || vehicleLoanBalance || 0}
                 relocationSync={relocationSync}
                 onTriggerWindfall={() => {
                   setWindfallData({
@@ -717,6 +717,7 @@ export default function PersonalFinanceTracker() {
         isOpen={isWindfallModalOpen}
         windfallAmount={windfallData.amount}
         windfallSource={windfallData.source}
+        carLoanBalance={debts.find(d => (d.name||'').toLowerCase().includes('car') || (d.name||'').toLowerCase().includes('kia') || (d.name||'').toLowerCase().includes('loan'))?.balance || 0}
         onRouteToDebt={handleRouteWindfallToDebt}
         onRouteToRelocation={handleRouteWindfallToRelocation}
         onRouteSplit={handleRouteWindfallSplit}
@@ -816,15 +817,32 @@ function DashboardTab({
       .slice(0, 3);
   }, [entries]);
 
-  // Relocation Goal Progress (defaults to $1,350 out of $3,000)
+  // Relocation Goal Progress: strictly dynamic from linked accounts or stored mapping, defaulting to 0
   const relocationSaved = useMemo(() => {
     try {
+      // 1. Check goal mapped account
+      const mapping = getGoalAccountMapping();
+      if (mapping?.relocationAccountId && linkedAccounts?.length > 0) {
+        const acc = linkedAccounts.find((a) => a.id === mapping.relocationAccountId);
+        if (acc) return Number(acc.balanceCurrent ?? acc.balanceAvailable ?? 0);
+      }
+      // 2. Check if user has an account named savings or subtype savings
+      const savingsAcc = linkedAccounts?.find(
+        (a) =>
+          a.subtype === 'savings' ||
+          a.subtype === 'hysa' ||
+          (a.name || '').toLowerCase().includes('saving') ||
+          (a.name || '').toLowerCase().includes('hysa')
+      );
+      if (savingsAcc) {
+        return Number(savingsAcc.balanceCurrent ?? savingsAcc.balanceAvailable ?? 0);
+      }
       const saved = localStorage.getItem('relocation_hysa_balance');
-      return saved !== null ? Number(saved) : 1350;
+      return saved !== null ? Number(saved) : 0;
     } catch {
-      return 1350;
+      return 0;
     }
-  }, []);
+  }, [linkedAccounts]);
   const relocationTarget = 3000;
   const relocationPct = Math.min(100, Math.round((relocationSaved / relocationTarget) * 100));
 
@@ -872,6 +890,23 @@ function DashboardTab({
           </div>
         </div>
 
+        {/* Informational banner when no accounts are connected */}
+        {linkedAccounts.length === 0 && (
+          <div className="p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/25 flex items-start gap-3">
+            <Info size={16} className="text-blue-400 mt-0.5 shrink-0" />
+            <div className="text-xs text-zinc-300">
+              <span className="font-semibold text-white">No accounts linked yet.</span> Balances and targets show <span className="font-semibold text-emerald-400">$0.00</span> until connected.{' '}
+              <button
+                type="button"
+                onClick={onOpenLink}
+                className="text-blue-400 hover:text-blue-300 underline font-semibold ml-1 cursor-pointer"
+              >
+                Connect Plaid accounts &rarr;
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* 3 Clear, Beginner-Friendly Number Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {/* Card 1: Cash in Bank */}
@@ -888,7 +923,9 @@ function DashboardTab({
             </div>
             <div className="text-2xl font-black text-white">{formatMoney(totalCashInBank)}</div>
             <p className="text-[11px] text-zinc-400 mt-1">
-              {bankAccounts.length > 0 ? `${bankAccounts.length} account connected` : 'Available to spend'}
+              {bankAccounts.length > 0
+                ? `${bankAccounts.length} account${bankAccounts.length === 1 ? '' : 's'} connected`
+                : 'No bank accounts linked'}
             </p>
           </button>
 
@@ -908,7 +945,9 @@ function DashboardTab({
               {totalCreditBalance > 0 ? `-${formatMoney(totalCreditBalance)}` : '$0.00'}
             </div>
             <p className="text-[11px] text-zinc-400 mt-1">
-              {creditAccounts.length > 0 ? `${creditAccounts.length} card balance` : 'No credit card debt'}
+              {creditAccounts.length > 0
+                ? `${creditAccounts.length} card balance${creditAccounts.length === 1 ? '' : 's'}`
+                : (debts.length > 0 ? `${debts.length} active debt${debts.length === 1 ? '' : 's'}` : 'No debts linked')}
             </p>
           </button>
 
@@ -925,7 +964,11 @@ function DashboardTab({
               <ArrowRight size={13} className="text-zinc-600 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-all" />
             </div>
             <div className="text-2xl font-black text-emerald-400">{formatMoney(totalPortfolioValue)}</div>
-            <p className="text-[11px] text-zinc-400 mt-1">Robinhood & retirement assets</p>
+            <p className="text-[11px] text-zinc-400 mt-1">
+              {investmentAccounts.length > 0
+                ? `${investmentAccounts.length} investment account${investmentAccounts.length === 1 ? '' : 's'}`
+                : (totalPortfolioValue > 0 ? 'Robinhood & retirement assets' : 'No portfolio linked')}
+            </p>
           </button>
         </div>
       </div>
@@ -1806,8 +1849,8 @@ function WealthTab({
     }) || debts.find((d) => d.kind === 'debt') || null;
 
   const kiaBalance = kiaDebt ? debtBalance(kiaDebt, entries) : 0;
-  const kiaOriginal = kiaDebt?.original || kiaDebt?.balance || (kiaBalance > 0 ? kiaBalance : 9000);
-  const kiaApr = kiaDebt?.apr || 12.5;
+  const kiaOriginal = kiaDebt?.original || kiaDebt?.balance || (kiaBalance > 0 ? kiaBalance : 0);
+  const kiaApr = kiaDebt?.apr || 0;
   const isKiaPaidOff = kiaDebt ? kiaBalance <= 0 : false;
   const _hasKiaDebt = kiaDebt != null && kiaBalance > 0;
   const phase3Progress =
@@ -1835,10 +1878,10 @@ function WealthTab({
 
   // Optimization impacts
   const optSavings = optimization?.totalPotentialSavings || 0;
-  const carMonthsSaved = optimization?.goalImpacts?.car?.monthsSaved || 3;
-  const carInterestSaved = optimization?.goalImpacts?.car?.interestSaved || 450;
-  const _hysaWeeksFaster = optimization?.goalImpacts?.hysa?.weeksFaster || 4;
-  const tenYearCompound = optimization?.goalImpacts?.funds?.tenYearTotal || 45000;
+  const carMonthsSaved = optimization?.goalImpacts?.car?.monthsSaved || 0;
+  const carInterestSaved = optimization?.goalImpacts?.car?.interestSaved || 0;
+  const _hysaWeeksFaster = optimization?.goalImpacts?.hysa?.weeksFaster || 0;
+  const tenYearCompound = optimization?.goalImpacts?.funds?.tenYearTotal || 0;
 
   return (
     <div className="space-y-5">
@@ -1960,7 +2003,7 @@ function WealthTab({
           </div>
         </div>
 
-        {/* GOAL 1: 2018 Kia Sportage Payoff Strategy */}
+        {/* GOAL 1: Auto Loan Payoff Strategy */}
         <div className="p-5 rounded-3xl bg-zinc-900/85 backdrop-blur-2xl border border-amber-500/25 shadow-lg shadow-amber-500/5 space-y-4">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
@@ -1972,62 +2015,83 @@ function WealthTab({
                   <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
                     High-Priority Debt Goal
                   </span>
-                  <span className="text-[10px] font-semibold text-gray-400">
-                    ~{kiaApr}% APR Auto Loan
-                  </span>
+                  {kiaDebt && kiaApr > 0 && (
+                    <span className="text-[10px] font-semibold text-gray-400">
+                      ~{kiaApr}% APR Auto Loan
+                    </span>
+                  )}
                 </div>
-                <h4 className="text-base font-bold text-white mt-1">Pay Off 2018 Kia Sportage</h4>
+                <h4 className="text-base font-bold text-white mt-1">
+                  {kiaDebt ? `Pay Off ${kiaDebt.name}` : 'Auto Loan Payoff Plan'}
+                </h4>
                 <p className="text-xs text-gray-400">
-                  Dedicating $800/mo cash flow + any detected bonuses directly to debt elimination.
+                  {kiaDebt
+                    ? 'Dedicating monthly cash flow surplus directly to principal reduction.'
+                    : 'Phase 2 goal (starts January). Link your auto loan to track payoff pace.'}
                 </p>
               </div>
             </div>
             <div className="text-right">
-              <span className={`text-sm font-bold ${isKiaPaidOff ? 'text-emerald-400' : 'text-amber-400'}`}>
-                {isKiaPaidOff ? '$0 (Paid Off!)' : formatMoney(kiaBalance)}
+              <span className={`text-sm font-bold ${!kiaDebt ? 'text-zinc-400' : isKiaPaidOff ? 'text-emerald-400' : 'text-amber-400'}`}>
+                {!kiaDebt ? '$0.00' : isKiaPaidOff ? '$0 (Paid Off!)' : formatMoney(kiaBalance)}
               </span>
               <p className="text-[10px] text-gray-500">Remaining Balance</p>
             </div>
           </div>
 
-          {/* Payoff Progress Bar */}
-          <div className="space-y-1.5">
-            <div className="w-full bg-black/40 rounded-full h-2.5 overflow-hidden border border-white/5">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${phase3Progress}%` }}
-                transition={{ duration: 1, ease: 'easeOut' }}
-                className={`h-full rounded-full ${isKiaPaidOff ? 'bg-emerald-400' : 'bg-amber-400'}`}
-              />
-            </div>
-            <div className="flex justify-between text-[11px] text-gray-400">
-              <span>{phase3Progress.toFixed(0)}% Paid Off</span>
-              <span>
-                {isKiaPaidOff
-                  ? 'Debt Eliminated!'
-                  : `${formatMoney(kiaBalance)} left to clear note`}
-              </span>
-            </div>
-          </div>
-
-          {/* Persistent Strategic Notes & Tooltips */}
-          <div className="space-y-2 pt-1">
-            <div className="p-3 rounded-2xl bg-black/50 border border-amber-500/20 flex items-start gap-2.5 text-xs text-amber-200">
-              <Info size={16} className="shrink-0 mt-0.5 text-amber-400" />
-              <div>
-                <strong className="text-white block mb-0.5">Payment Rule: Principal-Only Payments</strong>
-                When sending extra monthly cash beyond your minimum payment, always specify the payment as <strong>&quot;Principal-Only&quot;</strong>. This bypasses future interest compounding at ~12.5% APR.
+          {kiaDebt ? (
+            <>
+              {/* Payoff Progress Bar */}
+              <div className="space-y-1.5">
+                <div className="w-full bg-black/40 rounded-full h-2.5 overflow-hidden border border-white/5">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${phase3Progress}%` }}
+                    transition={{ duration: 1, ease: 'easeOut' }}
+                    className={`h-full rounded-full ${isKiaPaidOff ? 'bg-emerald-400' : 'bg-amber-400'}`}
+                  />
+                </div>
+                <div className="flex justify-between text-[11px] text-gray-400">
+                  <span>{phase3Progress.toFixed(0)}% Paid Off</span>
+                  <span>
+                    {isKiaPaidOff
+                      ? 'Debt Eliminated!'
+                      : `${formatMoney(kiaBalance)} left to clear note`}
+                  </span>
+                </div>
               </div>
-            </div>
 
-            <div className="p-3 rounded-2xl bg-black/30 border border-white/5 flex items-start gap-2.5 text-xs text-gray-300">
-              <ShieldCheck size={16} className="shrink-0 mt-0.5 text-emerald-400" />
-              <div>
-                <strong className="text-white block mb-0.5">Strategy: Hold and Pay Off — Do Not Lease</strong>
-                Keeping the 2018 Kia Sportage long-term post-payoff eliminates depreciation and permanently frees up <strong>$800+/month</strong> in recurring cash flow.
+              {/* Persistent Strategic Notes & Tooltips */}
+              <div className="space-y-2 pt-1">
+                <div className="p-3 rounded-2xl bg-black/50 border border-amber-500/20 flex items-start gap-2.5 text-xs text-amber-200">
+                  <Info size={16} className="shrink-0 mt-0.5 text-amber-400" />
+                  <div>
+                    <strong className="text-white block mb-0.5">Payment Rule: Principal-Only Payments</strong>
+                    When sending extra monthly cash beyond your minimum payment, always specify the payment as <strong>&quot;Principal-Only&quot;</strong>. This bypasses future interest compounding{kiaApr ? ` at ~${kiaApr}% APR` : ''}.
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-2xl bg-black/30 border border-white/5 flex items-start gap-2.5 text-xs text-gray-300">
+                  <ShieldCheck size={16} className="shrink-0 mt-0.5 text-emerald-400" />
+                  <div>
+                    <strong className="text-white block mb-0.5">Strategy: Hold and Pay Off — Do Not Lease</strong>
+                    Keeping your vehicle long-term post-payoff eliminates depreciation and permanently frees up recurring cash flow.
+                  </div>
+                </div>
               </div>
+            </>
+          ) : (
+            <div className="p-3.5 bg-black/40 rounded-2xl border border-zinc-800 text-xs text-zinc-400 flex items-center justify-between">
+              <span>No auto loan connected yet. All metrics show $0.00 until linked.</span>
+              <button
+                type="button"
+                onClick={onOpenLink}
+                className="text-amber-400 hover:text-amber-300 font-semibold underline text-xs cursor-pointer shrink-0 ml-2"
+              >
+                Link Loan
+              </button>
             </div>
-          </div>
+          )}
         </div>
 
         {/* GOAL 3: Tax-Advantaged Funds & Wealth Compounding */}
@@ -2367,8 +2431,8 @@ function OptimizationTab({
   totalVariable: _totalVariable,
   activeMonth,
   onNavigateTab: _onNavigateTab,
-  actualNetIncome = 5475,
-  vehicleLoanBalance = 9000,
+  actualNetIncome = 0,
+  vehicleLoanBalance = 0,
   relocationSync,
   onTriggerWindfall,
   onAddFoodEntry,
@@ -2394,9 +2458,9 @@ function OptimizationTab({
 
   const monthlySavings = optimization?.totalPotentialSavings || 0;
   const goalImpacts = optimization?.goalImpacts || {};
-  const carImpact = goalImpacts.car || { monthsSaved: 3, interestSaved: 450 };
-  const hysaImpact = goalImpacts.hysa || { weeksFaster: 4 };
-  const fundsImpact = goalImpacts.funds || { tenYearTotal: 45000 };
+  const carImpact = goalImpacts.car || { monthsSaved: 0, interestSaved: 0 };
+  const hysaImpact = goalImpacts.hysa || { weeksFaster: 0 };
+  const fundsImpact = goalImpacts.funds || { tenYearTotal: 0 };
 
   const displayedSuggestions =
     activeFilter === 'all'
@@ -2453,13 +2517,24 @@ function OptimizationTab({
           <RelocationGoalWidget cap={3000} emergencyTarget={10000} />
 
           {/* 2. Waterfall Cash Flow (Prioritizing Relocation) */}
-          <WaterfallCashFlow netIncome={5160} rentExpense={2000} groceryExpense={330} />
+          <WaterfallCashFlow
+            netIncome={actualNetIncome}
+            rentExpense={budgets?.['rent'] || budgets?.['housing'] || 0}
+            groceryExpense={budgets?.['groceries'] || budgets?.['food'] || 0}
+          />
 
           {/* 3. Kia Payoff Gauge (Phase 2 • Starts in January) */}
-          <KiaPayoffGauge loanBalance={9000} annualApr={0.125} baseMinPayment={230} />
+          <KiaPayoffGauge
+            loanBalance={vehicleLoanBalance}
+            annualApr={0.125}
+            baseMinPayment={vehicleLoanBalance > 0 ? 230 : 0}
+          />
 
           {/* 4. Tax Shield Slider */}
-          <TaxShieldSlider annualSalary={90000} marginalTaxRate={0.30} />
+          <TaxShieldSlider
+            annualSalary={actualNetIncome > 0 ? actualNetIncome * 12 : 0}
+            marginalTaxRate={0.30}
+          />
         </div>
       ) : subTab === 'behavioral' ? (
         <div className="space-y-6">

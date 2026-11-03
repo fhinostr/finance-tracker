@@ -26,20 +26,20 @@ import { formatMoney } from '../lib/store.js';
  */
 
 export default function WaterfallCashFlow({
-  netIncome = 5160,
-  rentExpense = 2000,
-  groceryExpense = 330,
+  netIncome = 0,
+  rentExpense = 0,
+  groceryExpense = 0,
 }) {
-  const otherFixed = 870; // Utilities, auto insurance, base car min, fuel
-  const totalOutflows = rentExpense + groceryExpense + otherFixed; // $3,200
-  const surplusTotal = Math.max(0, netIncome - totalOutflows); // exactly $1,960
+  const otherFixed = netIncome > 0 ? 870 : 0;
+  const totalOutflows = rentExpense + groceryExpense + otherFixed;
+  const surplusTotal = Math.max(0, netIncome - totalOutflows);
 
   // Interactive surplus bucket allocations (Phase 1: Relocation Buffer is urgent; Phase 2: Kia Debt starts January)
-  const [relocAlloc, setRelocAlloc] = useState(1200);
-  const [debtAlloc, setDebtAlloc] = useState(400);
+  const [relocAlloc, setRelocAlloc] = useState(0);
+  const [debtAlloc, setDebtAlloc] = useState(0);
   const wealthAlloc = Math.max(0, surplusTotal - relocAlloc - debtAlloc);
 
-  const steps = [
+  const steps = netIncome > 0 ? [
     {
       id: 'rent',
       name: 'Apartment Rent',
@@ -47,27 +47,27 @@ export default function WaterfallCashFlow({
       icon: Building,
       color: 'from-amber-500/20 to-amber-600/10 text-amber-400 border-amber-500/30',
       bar: 'bg-amber-500',
-      remAfter: netIncome - rentExpense,
+      remAfter: Math.max(0, netIncome - rentExpense),
     },
     {
       id: 'groceries',
-      name: 'Prep Groceries (Costco & Staples)',
+      name: 'Prep Groceries',
       amount: groceryExpense,
       icon: ShoppingBag,
       color: 'from-orange-500/20 to-orange-600/10 text-orange-400 border-orange-500/30',
       bar: 'bg-orange-500',
-      remAfter: netIncome - rentExpense - groceryExpense,
+      remAfter: Math.max(0, netIncome - rentExpense - groceryExpense),
     },
     {
       id: 'other',
-      name: 'Utilities, Insurance, Fuel & Minimums',
+      name: 'Utilities, Insurance & Minimums',
       amount: otherFixed,
       icon: Zap,
       color: 'from-blue-500/20 to-blue-600/10 text-blue-400 border-blue-500/30',
       bar: 'bg-blue-500',
       remAfter: surplusTotal,
     },
-  ];
+  ] : [];
 
   return (
     <div className="p-6 rounded-3xl bg-gradient-to-br from-zinc-900/95 via-zinc-900/80 to-zinc-950 border border-zinc-800 shadow-2xl backdrop-blur-2xl space-y-6">
@@ -100,6 +100,14 @@ export default function WaterfallCashFlow({
       </div>
 
       {/* Waterfall Flow Nodes */}
+      {netIncome <= 0 ? (
+        <div className="p-8 rounded-2xl bg-zinc-950/60 border border-dashed border-zinc-800 text-center space-y-2">
+          <p className="text-sm font-semibold text-zinc-300">No monthly income connected yet</p>
+          <p className="text-xs text-zinc-500 max-w-sm mx-auto">
+            Once your bank accounts are linked via Plaid or you log income, your real cash flow waterfall will route automatically here.
+          </p>
+        </div>
+      ) : (
       <div className="space-y-3">
         {/* Starting Net Node */}
         <div className="p-4 rounded-2xl bg-zinc-900/90 border border-emerald-500/30 shadow-lg shadow-emerald-500/5 flex items-center justify-between">
@@ -259,6 +267,7 @@ export default function WaterfallCashFlow({
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

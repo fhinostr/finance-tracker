@@ -33,6 +33,7 @@ export default function WindfallInterceptorModal({
   isOpen,
   windfallAmount = 980,
   windfallSource = 'Corporate Bonus / Anomaly Deposit',
+  carLoanBalance = 0,
   onRouteToDebt,
   onRouteToRelocation,
   onRouteSplit,
@@ -199,14 +200,16 @@ export default function WindfallInterceptorModal({
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-zinc-200 group-hover:text-amber-300 transition-colors">
-                      Route to Kia Loan Principal
+                      Route to Vehicle Loan Principal
                     </span>
                     <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
                       <Calendar size={10} /> Starts in January
                     </span>
                   </div>
                   <div className="text-[10px] text-zinc-400">
-                    Optional early headstart on $9,000 auto loan (12.5% APR)
+                    {carLoanBalance > 0
+                      ? `Optional early headstart on ${formatMoney(carLoanBalance)} auto loan`
+                      : 'Optional early headstart on vehicle loan principal'}
                   </div>
                   <div className="text-[10px] text-amber-300 font-semibold mt-1 flex items-center gap-1">
                     <span>Paid via:</span>

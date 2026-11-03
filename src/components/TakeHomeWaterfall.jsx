@@ -27,8 +27,8 @@ import {
  */
 
 export default function TakeHomeWaterfall({
-  actualNetIncome = 5475,
-  useCustomBaseline = true,
+  actualNetIncome = 0,
+  useCustomBaseline: _useCustomBaseline = false,
 }) {
   const [useMdTax, setUseMdTax] = useState(() => {
     return localStorage.getItem('waterfall_md_tax') === 'true';
@@ -40,16 +40,16 @@ export default function TakeHomeWaterfall({
     localStorage.setItem('waterfall_md_tax', String(nextVal));
   };
 
-  // Baseline net income
-  const baselineGross = useCustomBaseline ? 5475 : (actualNetIncome || 5475);
+  // Baseline net income: strictly use actualNetIncome if available, otherwise 0
+  const baselineGross = actualNetIncome > 0 ? actualNetIncome : 0;
 
   // Maryland tax calculation: 5.75% State + 3.20% County = 8.95% total
   const mdTaxRate = 0.0895;
   const mdTaxDeduction = useMdTax ? baselineGross * mdTaxRate : 0;
-  const netTakeHome = baselineGross - mdTaxDeduction;
+  const netTakeHome = Math.max(0, baselineGross - mdTaxDeduction);
 
-  // Fixed outflows sequentially
-  const outflows = [
+  // Fixed outflows sequentially (only active if baseline income exists)
+  const outflows = baselineGross > 0 ? [
     {
       id: 'rent',
       name: 'Apartment Rent',
@@ -82,7 +82,7 @@ export default function TakeHomeWaterfall({
       color: 'from-rose-500/20 to-rose-600/10 text-rose-400 border-rose-500/30',
       barColor: 'bg-rose-500',
     },
-  ];
+  ] : [];
 
   const totalFixedOutflows = outflows.reduce((acc, curr) => acc + curr.amount, 0);
   const trueDiscretionaryCash = Math.max(0, netTakeHome - totalFixedOutflows);
@@ -96,7 +96,7 @@ export default function TakeHomeWaterfall({
       ...item,
       prevBalance: prev,
       remainingAfter: runningBalance,
-      percentageOfNet: ((item.amount / netTakeHome) * 100).toFixed(1),
+      percentageOfNet: netTakeHome > 0 ? ((item.amount / netTakeHome) * 100).toFixed(1) : '0',
     };
   });
 
@@ -165,6 +165,14 @@ export default function TakeHomeWaterfall({
       </div>
 
       {/* Waterfall Flow Nodes */}
+      {baselineGross <= 0 ? (
+        <div className="mt-6 p-8 rounded-2xl bg-zinc-950/60 border border-dashed border-zinc-800 text-center space-y-2">
+          <p className="text-sm font-semibold text-zinc-300">No monthly income connected yet</p>
+          <p className="text-xs text-zinc-500 max-w-sm mx-auto">
+            Once you connect your bank account via Plaid or record your monthly paycheck, your real cash flow waterfall will route automatically here with zero placeholders.
+          </p>
+        </div>
+      ) : (
       <motion.div
         variants={containerVariants}
         initial="hidden"
@@ -319,6 +327,7 @@ export default function TakeHomeWaterfall({
           </div>
         </motion.div>
       </motion.div>
+      )}
     </div>
   );
 }

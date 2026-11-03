@@ -35,7 +35,7 @@ function getPayoffDate(months) {
 }
 
 export default function KiaPayoffGauge({
-  loanBalance = 9000,
+  loanBalance = 0,
   annualApr = 0.125, // 12.5% APR
   baseMinPayment = 230,
 }) {
@@ -46,10 +46,12 @@ export default function KiaPayoffGauge({
 
   // Calculate payoff months
   const baselineMonths = useMemo(() => {
+    if (loanBalance <= 0) return 0;
     return calcAmortizationMonths(loanBalance, annualApr, baseMinPayment);
   }, [loanBalance, annualApr, baseMinPayment]);
 
   const currentMonths = useMemo(() => {
+    if (loanBalance <= 0) return 0;
     return calcAmortizationMonths(loanBalance, annualApr, totalMonthlyPayment);
   }, [loanBalance, annualApr, totalMonthlyPayment]);
 
@@ -63,8 +65,6 @@ export default function KiaPayoffGauge({
   const targetDateStr = useMemo(() => getPayoffDate(displayMonths), [displayMonths]);
 
   // Semi-circular gauge parameters
-  // Range: 16.4 months (0% progress on sprint) down to 12.0 months (100% progress on sprint)
-  // Or relative to slider: $370 (min sprint) to $570 (max sprint)
   const sprintRatio = (extraPrincipal - 370) / (570 - 370); // 0 to 1
 
   return (
@@ -84,21 +84,32 @@ export default function KiaPayoffGauge({
             Kia Payoff Speed Gauge
           </h2>
           <p className="text-xs text-zinc-400 mt-0.5">
-            ${loanBalance.toLocaleString()} loan @ {(annualApr * 100).toFixed(1)}% APR • ${baseMinPayment}/mo minimum base.
+            {loanBalance > 0
+              ? `$${loanBalance.toLocaleString()} loan @ ${(annualApr * 100).toFixed(1)}% APR • $${baseMinPayment}/mo minimum base.`
+              : 'Interactive payoff gauge tracks your auto loan amortization in real time.'}
           </p>
         </div>
 
         <div className="text-left sm:text-right">
           <span className="text-[10px] uppercase font-bold text-zinc-500 block">Total Payment</span>
           <span className="text-3xl font-black text-amber-400 font-mono">
-            ${totalMonthlyPayment}
+            ${loanBalance > 0 ? totalMonthlyPayment : 0}
             <span className="text-xs text-zinc-400 font-normal"> /mo</span>
           </span>
         </div>
       </div>
 
-      {/* SVG Semi-Circle Gauge Visual */}
-      <div className="flex flex-col items-center justify-center pt-2">
+      {loanBalance <= 0 ? (
+        <div className="p-8 rounded-2xl bg-zinc-950/60 border border-dashed border-zinc-800 text-center space-y-2">
+          <p className="text-sm font-semibold text-zinc-300">No active vehicle loan connected yet</p>
+          <p className="text-xs text-zinc-500 max-w-sm mx-auto">
+            Once your car loan is linked via Plaid or entered in Debts & Bills, this interactive gauge calculates your payoff speed and interest savings dynamically.
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* SVG Semi-Circle Gauge Visual */}
+          <div className="flex flex-col items-center justify-center pt-2">
         <div className="relative w-64 h-36 flex items-end justify-center overflow-hidden">
           <svg viewBox="0 0 200 110" className="w-full h-full overflow-visible">
             {/* Background Arc */}
@@ -245,13 +256,15 @@ export default function KiaPayoffGauge({
         </motion.div>
       </div>
 
-      {/* Behavioral Notice */}
-      <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-2.5 text-xs text-amber-200">
-        <Sparkles size={16} className="text-amber-400 shrink-0" />
-        <span>
-          <strong>Principal-Only Rule:</strong> Remind loan servicer to credit all extra ${extraPrincipal}/mo strictly to principal, not future monthly installments.
-        </span>
-      </div>
+        {/* Behavioral Notice */}
+        <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-2.5 text-xs text-amber-200">
+          <Sparkles size={16} className="text-amber-400 shrink-0" />
+          <span>
+            <strong>Principal-Only Rule:</strong> Remind loan servicer to credit all extra ${extraPrincipal}/mo strictly to principal, not future monthly installments.
+          </span>
+        </div>
+      </>
+      )}
     </div>
   );
 }

@@ -29,12 +29,27 @@ export function saveGoalAccountMapping(mapping) {
   }
 }
 
-// Automatically clean up legacy mock seed data from v1
+// Automatically clean up legacy mock seed data and placeholder balances
 try {
   if (typeof window !== 'undefined') {
     const v1 = localStorage.getItem('finance-tracker:v1');
     if (v1 && v1.includes('Rent (Maryland)')) {
       localStorage.removeItem('finance-tracker:v1');
+    }
+    // If no real accounts are connected, wipe dummy mock keys so app stays completely backed by real data
+    const rawAccs = localStorage.getItem(STORAGE_KEY_ACCOUNTS);
+    const hasAccounts = rawAccs && JSON.parse(rawAccs).length > 0;
+    if (!hasAccounts) {
+      const legacyMockKeys = [
+        'relocation_hysa_balance',
+        'behavioral_vehicle_loan',
+        'relocation_accumulated_cash',
+        'food_prep_bulk_spent',
+        'food_dining_out_spent',
+        'waterfall_md_tax',
+        'paydown_monthly_slider',
+      ];
+      legacyMockKeys.forEach((k) => localStorage.removeItem(k));
     }
   }
 } catch {

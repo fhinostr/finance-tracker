@@ -20,12 +20,18 @@ import { formatMoney } from '../lib/store.js';
  */
 
 export default function TaxShieldSlider({
-  annualSalary = 90000,
+  annualSalary: propSalary = 0,
   marginalTaxRate = 0.30,
 }) {
+  const [customSalary, setCustomSalary] = useState(() => {
+    return propSalary > 0 ? propSalary : Number(localStorage.getItem('user_annual_salary') || 0);
+  });
+  const [salaryInput, setSalaryInput] = useState('');
+  const annualSalary = propSalary > 0 ? propSalary : customSalary;
+
   const [contributionPct, setContributionPct] = useState(6.0);
 
-  const monthlyGross = annualSalary / 12; // $7,500
+  const monthlyGross = annualSalary > 0 ? annualSalary / 12 : 0;
   const grossMonthlyInvestment = (monthlyGross * contributionPct) / 100;
   const monthlyTaxSavings = grossMonthlyInvestment * marginalTaxRate;
   const netPaycheckDrop = grossMonthlyInvestment - monthlyTaxSavings;
@@ -54,7 +60,9 @@ export default function TaxShieldSlider({
             401(k) Tax Shield Slider
           </h2>
           <p className="text-xs text-zinc-400 mt-0.5">
-            Based on a ${annualSalary.toLocaleString()} salary (${monthlyGross.toLocaleString()}/mo gross) and a {(marginalTaxRate * 100).toFixed(0)}% marginal tax rate.
+            {annualSalary > 0
+              ? `Based on a $${annualSalary.toLocaleString()} salary ($${Math.round(monthlyGross).toLocaleString()}/mo gross) and a ${(marginalTaxRate * 100).toFixed(0)}% marginal tax rate.`
+              : 'Calculate your exact paycheck drop vs gross investment savings.'}
           </p>
         </div>
 
@@ -66,8 +74,45 @@ export default function TaxShieldSlider({
         </div>
       </div>
 
-      {/* Interactive Slider Card */}
-      <div className="p-5 rounded-2xl bg-zinc-950/70 border border-zinc-800 space-y-3">
+      {annualSalary <= 0 ? (
+        <div className="p-8 rounded-2xl bg-zinc-950/60 border border-dashed border-zinc-800 text-center space-y-3">
+          <p className="text-sm font-semibold text-zinc-300">No annual salary linked yet</p>
+          <p className="text-xs text-zinc-500 max-w-sm mx-auto">
+            Link your bank account via Plaid, or enter your gross annual salary to calculate your exact 401(k) tax savings:
+          </p>
+          <div className="flex items-center justify-center gap-2 max-w-xs mx-auto">
+            <span className="text-zinc-400 font-bold">$</span>
+            <input
+              type="number"
+              placeholder="e.g. 75000"
+              value={salaryInput}
+              onChange={(e) => setSalaryInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && Number(salaryInput) > 0) {
+                  setCustomSalary(Number(salaryInput));
+                  localStorage.setItem('user_annual_salary', salaryInput);
+                }
+              }}
+              className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-700 text-white text-xs font-mono focus:outline-none focus:border-indigo-400"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                if (Number(salaryInput) > 0) {
+                  setCustomSalary(Number(salaryInput));
+                  localStorage.setItem('user_annual_salary', salaryInput);
+                }
+              }}
+              className="px-3 py-1.5 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-bold transition-colors cursor-pointer"
+            >
+              Set
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Interactive Slider Card */}
+          <div className="p-5 rounded-2xl bg-zinc-950/70 border border-zinc-800 space-y-3">
         <div className="flex items-center justify-between text-xs">
           <label htmlFor="tax-shield-slider-input" className="font-bold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
             <Percent size={13} className="text-indigo-400" />
@@ -198,6 +243,8 @@ export default function TaxShieldSlider({
           </div>
         </div>
       </div>
-    </div>
+    </>
+  )}
+</div>
   );
 }

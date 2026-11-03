@@ -29,15 +29,15 @@ export default function BifurcatedFoodTracker({
   const DINING_OUT_CAP = 150;
   const TOTAL_CAP = PREP_BULK_CAP + DINING_OUT_CAP; // $335
 
-  // Local state for tracking spend
+  // Local state for tracking spend (defaults strictly to 0 when starting clean)
   const [prepBulkSpent, setPrepBulkSpent] = useState(() => {
     const val = localStorage.getItem('food_prep_bulk_spent');
-    return val !== null ? Number(val) : 82.50; // realistic default progress
+    return val !== null ? Number(val) : 0;
   });
 
   const [diningOutSpent, setDiningOutSpent] = useState(() => {
     const val = localStorage.getItem('food_dining_out_spent');
-    return val !== null ? Number(val) : 64.00; // realistic default progress
+    return val !== null ? Number(val) : 0;
   });
 
   const [quickAddAmount, setQuickAddAmount] = useState('');

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Compass,
@@ -10,12 +10,13 @@ import {
   RotateCcw,
   Shield,
 } from 'lucide-react';
-import { formatMoney } from '../lib/store.js';
+import { formatMoney, getStoredAccounts, getGoalAccountMapping } from '../lib/store.js';
 
 /**
  * Component 4: Relocation Goal Widget
  *
  * Earmarked for a $3,000 relocation funding cap.
+ * Directly reflects user's linked savings accounts (or $0 if not connected).
  * Visually locks upon reaching $3,000.
  * Automatically redirects any further cash flow into a General Emergency Fund component.
  */
@@ -24,11 +25,34 @@ export default function RelocationGoalWidget({
   cap = 3000,
   emergencyTarget = 10000,
 }) {
-  // Total cash accumulated across the relocation funnel
-  const [accumulatedCash, setAccumulatedCash] = useState(() => {
+  const getInitialCash = () => {
+    const mapping = getGoalAccountMapping();
+    const stored = getStoredAccounts();
+    const targetAcc = stored.find((a) => a.id === mapping.relocationAccountId);
+    if (targetAcc) return Number(targetAcc.balance) || 0;
+    const savingsAcc = stored.find(
+      (a) =>
+        a.subtype?.toLowerCase().includes('savings') ||
+        a.name?.toLowerCase().includes('savings'),
+    );
+    if (savingsAcc) return Number(savingsAcc.balance) || 0;
     const saved = localStorage.getItem('relocation_accumulated_cash');
-    return saved !== null ? Number(saved) : 2400; // start near cap to easily see lock
-  });
+    return saved !== null && stored.length > 0 ? Number(saved) : 0;
+  };
+
+  const [accumulatedCash, setAccumulatedCash] = useState(getInitialCash);
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      setAccumulatedCash(getInitialCash());
+    };
+    window.addEventListener('finance-tracker:accounts-updated', handleUpdate);
+    window.addEventListener('finance-tracker:goal-accounts-updated', handleUpdate);
+    return () => {
+      window.removeEventListener('finance-tracker:accounts-updated', handleUpdate);
+      window.removeEventListener('finance-tracker:goal-accounts-updated', handleUpdate);
+    };
+  }, []);
 
   const handleAdd = (amount) => {
     setAccumulatedCash((prev) => {
@@ -39,8 +63,8 @@ export default function RelocationGoalWidget({
   };
 
   const handleReset = () => {
-    setAccumulatedCash(1500);
-    localStorage.setItem('relocation_accumulated_cash', '1500');
+    setAccumulatedCash(0);
+    localStorage.setItem('relocation_accumulated_cash', '0');
   };
 
   // Splitting: First $3,000 fills Relocation Cap; overflow redirects into General Emergency Fund

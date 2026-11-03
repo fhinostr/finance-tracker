@@ -42,13 +42,13 @@ function getPayoffDateLabel(monthsAhead) {
 }
 
 export default function AcceleratedPrincipalPaydown({
-  principalBalance = 9000,
+  principalBalance = 0,
   interestRate = 0.125, // 12.5% APR
   onPaymentChange,
 }) {
   const [payment, setPayment] = useState(() => {
     const saved = localStorage.getItem('paydown_monthly_slider');
-    return saved ? Number(saved) : 350;
+    return saved && principalBalance > 0 ? Number(saved) : 350;
   });
 
   const [applyToPrincipal, setApplyToPrincipal] = useState(() => {
@@ -139,6 +139,14 @@ export default function AcceleratedPrincipalPaydown({
       </div>
 
       {/* Main Interactive Paydown Section */}
+      {principalBalance <= 0 ? (
+        <div className="mt-6 p-8 rounded-2xl bg-zinc-950/60 border border-dashed border-zinc-800 text-center space-y-2">
+          <p className="text-sm font-semibold text-zinc-300">No active auto loan connected yet</p>
+          <p className="text-xs text-zinc-500 max-w-sm mx-auto">
+            Once your vehicle loan is linked via Plaid or entered in Debts & Bills, this interactive paydown slider will calculate your exact payoff timeline.
+          </p>
+        </div>
+      ) : (
       <div className="mt-6 space-y-6">
         {/* Slider Card */}
         <div className="p-5 rounded-2xl bg-zinc-950/70 border border-zinc-800/90 space-y-4">
@@ -326,6 +334,7 @@ export default function AcceleratedPrincipalPaydown({
           </motion.div>
         )}
       </div>
+      )}
     </div>
   );
 }
