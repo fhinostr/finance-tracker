@@ -37,13 +37,16 @@ function calculateOpportunityCost(monthlyAmount = 0, kiaBalance = 0) {
   const tenYearWealth = Math.round(amt * ((Math.pow(1 + r, 120) - 1) / r));
   const twentyYearWealth = Math.round(amt * ((Math.pow(1 + r, 240) - 1) / r));
 
-  // 2. Impact on 12.5% Kia Sportage loan payoff ($800 base payment)
-  const effectiveKia = kiaBalance > 0 ? kiaBalance : 14000;
-  const basePayment = 800;
-  const currentPayoffMonths = Math.ceil(effectiveKia / basePayment);
-  const acceleratedPayoffMonths = Math.ceil(effectiveKia / (basePayment + amt));
-  const carMonthsSaved = Math.max(currentPayoffMonths - acceleratedPayoffMonths, 1);
-  const carInterestSaved = Math.round(effectiveKia * 0.125 * (carMonthsSaved / 12));
+  // 2. Impact on auto loan payoff
+  let carMonthsSaved = 0;
+  let carInterestSaved = 0;
+  if (kiaBalance > 0) {
+    const basePayment = 800;
+    const currentPayoffMonths = Math.ceil(kiaBalance / basePayment);
+    const acceleratedPayoffMonths = Math.ceil(kiaBalance / (basePayment + amt));
+    carMonthsSaved = Math.max(currentPayoffMonths - acceleratedPayoffMonths, 0);
+    carInterestSaved = Math.round(kiaBalance * 0.125 * (carMonthsSaved / 12));
+  }
 
   return {
     tenYearWealth,
@@ -423,10 +426,12 @@ export function generateOptimizationInsights({
     kiaBalance > 0
       ? Math.ceil(kiaBalance / (currentMonthlyCarPmt + totalPotentialSavings))
       : 0;
-  const carMonthsSaved = Math.max(carPayoffMonthsCurrent - carPayoffMonthsAccelerated, 1);
-  const carInterestSaved = Math.round(
-    kiaBalance * 0.125 * (carMonthsSaved / 12),
-  );
+  const carMonthsSaved = kiaBalance > 0 && totalPotentialSavings > 0
+    ? Math.max(carPayoffMonthsCurrent - carPayoffMonthsAccelerated, 0)
+    : 0;
+  const carInterestSaved = kiaBalance > 0
+    ? Math.round(kiaBalance * 0.125 * (carMonthsSaved / 12))
+    : 0;
 
   // 2. HYSA Runway Impact ($3k buffer + $10k emergency fund)
   const hysaTarget = 3000;

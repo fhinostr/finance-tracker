@@ -27,27 +27,49 @@ function calculateFinancialScore({
   debts = [],
   linkedAccountsCount = 0,
 }) {
+  const hasAnyData =
+    linkedAccountsCount > 0 ||
+    totalCashInBank > 0 ||
+    relocationSaved > 0 ||
+    debts.length > 0 ||
+    actualNetIncome > 0 ||
+    totalVariable > 0;
+
+  if (!hasAnyData) {
+    return {
+      score: 0,
+      level: 0,
+      levelName: 'No Accounts Linked',
+      levelIcon: '🔒',
+      badgeColor: 'bg-zinc-800 text-zinc-400 border-zinc-700',
+      nextLevelTarget: 25,
+      summaryTagline: 'Link your accounts in Accounts to calculate your real Financial Health Score.',
+      pillars: {
+        cash: { score: 0, max: 30, label: 'Cash Cushion' },
+        debt: { score: 0, max: 25, label: 'Debt Control' },
+        surplus: { score: 0, max: 25, label: 'Spending Control' },
+        invest: { score: 0, max: 20, label: 'Wealth Growth' },
+      },
+    };
+  }
+
   // 1. Cash Cushion (Max 30 pts)
   let cashScore = 0;
-  if (totalCashInBank >= 3000 || relocationSaved >= 3000) {
+  const realCash = Math.max(totalCashInBank, relocationSaved);
+  if (realCash >= 3000) {
     cashScore = 30;
-  } else if (totalCashInBank > 0 || relocationSaved > 0) {
-    const val = Math.max(totalCashInBank, relocationSaved);
-    cashScore = Math.max(8, Math.round((val / 3000) * 30));
-  } else if (linkedAccountsCount > 0) {
-    cashScore = 5;
+  } else if (realCash > 0) {
+    cashScore = Math.min(30, Math.round((realCash / 3000) * 30));
   }
 
   // 2. Debt Control (Max 25 pts)
   let debtScore = 0;
-  if (totalCreditBalance === 0) {
-    if (debts.length === 0) {
-      debtScore = 25; // Debt free!
+  if (linkedAccountsCount > 0 || debts.length > 0) {
+    if (totalCreditBalance === 0) {
+      debtScore = debts.length === 0 ? 25 : 20;
     } else {
-      debtScore = 22; // No high interest credit debt
+      debtScore = Math.max(0, Math.round(25 - (totalCreditBalance / 500) * 5));
     }
-  } else {
-    debtScore = Math.max(5, Math.round(25 - (totalCreditBalance / 1000) * 10));
   }
 
   // 3. Living Below Means (Max 25 pts)
@@ -57,12 +79,8 @@ function calculateFinancialScore({
     if (surplus >= actualNetIncome * 0.2) {
       surplusScore = 25;
     } else if (surplus > 0) {
-      surplusScore = 18;
-    } else {
-      surplusScore = 8;
+      surplusScore = Math.min(25, Math.round((surplus / actualNetIncome) * 25));
     }
-  } else {
-    surplusScore = totalVariable < 1500 ? 20 : 12;
   }
 
   // 4. Future Investments (Max 20 pts)
@@ -70,12 +88,10 @@ function calculateFinancialScore({
   if (totalPortfolioValue >= 5000) {
     investScore = 20;
   } else if (totalPortfolioValue > 0) {
-    investScore = Math.max(8, Math.round((totalPortfolioValue / 5000) * 20));
-  } else {
-    investScore = 4;
+    investScore = Math.min(20, Math.round((totalPortfolioValue / 5000) * 20));
   }
 
-  const totalScore = Math.min(100, Math.max(10, cashScore + debtScore + surplusScore + investScore));
+  const totalScore = Math.min(100, Math.max(0, cashScore + debtScore + surplusScore + investScore));
 
   // Determine Level & Tier
   let level = 1;
@@ -147,28 +163,28 @@ export default function FinancialHealthScore({
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (stats.score / 100) * circumference;
 
-  // Gamified Power-Up Quests
+  // Gamified Power-Up Quests strictly reflecting real account & goal status
   const quests = [
+    {
+      id: 'link_account',
+      title: 'Link Your First Bank Account',
+      reward: '+25 XP',
+      completed: (data.linkedAccountsCount || 0) > 0,
+      actionMetric: 'cash',
+    },
     {
       id: 'cushion_500',
       title: 'Save First $500 in Move Cushion',
       reward: '+20 XP',
-      completed: (data.relocationSaved || 0) >= 500,
+      completed: (data.relocationSaved || 0) >= 500 && (data.relocationSaved || 0) > 0,
       actionMetric: 'goal_cushion',
     },
     {
       id: 'zero_credit',
       title: 'Keep Credit Card Debt at $0',
       reward: '+25 XP',
-      completed: (data.totalCreditBalance || 0) === 0,
+      completed: (data.linkedAccountsCount || 0) > 0 && (data.totalCreditBalance || 0) === 0,
       actionMetric: 'debts',
-    },
-    {
-      id: 'test_simulator',
-      title: 'Try the 401(k) or Car Payoff Simulator',
-      reward: '+15 XP',
-      completed: true,
-      actionMetric: 'sim_tax',
     },
   ];
 

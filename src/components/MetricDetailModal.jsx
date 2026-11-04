@@ -100,8 +100,14 @@ export default function MetricDetailModal({
       badge: 'Obligations',
       badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
       icon: <Car className="text-amber-400" size={24} />,
-      bigValue: totalCreditBalance > 0 ? formatMoney(totalCreditBalance) : (debts.length > 0 ? `${debts.length} Active Debts` : '$0.00'),
-      subtext: debts.length > 0 ? `${debts.length} active loan / credit line` : 'No debts linked',
+      bigValue: totalCreditBalance > 0
+        ? `-${formatMoney(totalCreditBalance)}`
+        : debts.length > 0
+        ? formatMoney(debts.reduce((s, d) => s + (d.balance || 0), 0))
+        : '$0.00',
+      subtext: debts.length > 0 || creditAccounts.length > 0
+        ? `${debts.length + creditAccounts.length} active obligation(s)`
+        : 'No debts or loans linked',
       studentExplanation: {
         what: 'Money you currently owe to credit card companies, banks, or auto lenders, plus your monthly fixed bills.',
         why: 'Credit card interest can be 20% or higher, which means debt doubles fast if you only pay minimums. Paying off debt gives you an instant guaranteed return.',
@@ -131,7 +137,9 @@ export default function MetricDetailModal({
       badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
       icon: <TrendingUp className="text-emerald-400" size={24} />,
       bigValue: formatMoney(totalPortfolioValue),
-      subtext: investmentAccounts.length > 0 ? `${investmentAccounts.length} portfolio account` : 'Robinhood & retirement accounts',
+      subtext: investmentAccounts.length > 0
+        ? `${investmentAccounts.length} portfolio account(s)`
+        : 'No investment accounts linked ($0.00)',
       studentExplanation: {
         what: 'Money invested in index funds, stocks, or retirement accounts like a Roth IRA or 401(k).',
         why: 'Money in savings loses buying power over time due to inflation. Investing in the stock market historically grows at ~8%–10% per year, compounding your wealth.',
@@ -145,8 +153,10 @@ export default function MetricDetailModal({
       badge: 'Smart Tool',
       badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
       icon: <Sparkles className="text-indigo-400" size={24} />,
-      bigValue: 'Save 30% on Taxes',
-      subtext: 'Interactive retirement simulator',
+      bigValue: actualNetIncome > 0 ? '30% Tax Shield' : '$0.00',
+      subtext: actualNetIncome > 0
+        ? 'Interactive retirement simulator'
+        : 'No income linked yet. Connect bank or enter salary.',
       studentExplanation: {
         what: 'A tool that shows how investing into a 401(k) lowers the taxes taken out of your paycheck.',
         why: 'Money you contribute to a traditional 401(k) is taken out before taxes are calculated. If your tax rate is 30%, a $100 investment only reduces your take-home pay by $70!',
@@ -160,8 +170,10 @@ export default function MetricDetailModal({
       badge: 'Debt Crusher',
       badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
       icon: <Car className="text-amber-400" size={24} />,
-      bigValue: vehicleLoanBalance > 0 ? formatMoney(vehicleLoanBalance) : 'Car Payoff Plan',
-      subtext: 'Slide extra payments to crush loan interest',
+      bigValue: vehicleLoanBalance > 0 ? formatMoney(vehicleLoanBalance) : '$0.00',
+      subtext: vehicleLoanBalance > 0
+        ? 'Slide extra payments to crush loan interest'
+        : 'No auto loan linked yet ($0.00)',
       studentExplanation: {
         what: 'A calculator that reveals how fast an extra $50 to $200 per month will eliminate an auto loan.',
         why: 'Car loans charge interest every month. When you send extra payments marked "Principal-Only", you shorten the loan by months and save hundreds in bank interest.',
@@ -175,8 +187,10 @@ export default function MetricDetailModal({
       badge: 'Cash Flow',
       badgeColor: 'bg-teal-500/20 text-teal-300 border-teal-500/30',
       icon: <Layers className="text-teal-400" size={24} />,
-      bigValue: actualNetIncome > 0 ? `${formatMoney(actualNetIncome)}/mo` : 'Cash Flow Map',
-      subtext: 'Step-by-step route of your paycheck',
+      bigValue: actualNetIncome > 0 ? `${formatMoney(actualNetIncome)}/mo` : '$0.00',
+      subtext: actualNetIncome > 0
+        ? 'Step-by-step route of your paycheck'
+        : 'No income linked yet ($0.00)',
       studentExplanation: {
         what: 'A visual map showing how each paycheck flows through fixed rent, groceries, and into your savings surplus.',
         why: 'Paycheck-to-paycheck stress happens when money flows out faster than it flows in. Seeing the flow helps you clearly spot where you can save.',
