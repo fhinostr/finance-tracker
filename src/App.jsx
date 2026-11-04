@@ -62,6 +62,7 @@ import RelocationGoalWidget from './components/RelocationGoalWidget.jsx';
 import { useSavingsSync } from './lib/useSavingsSync.js';
 import WindfallInterceptorModal from './components/WindfallInterceptorModal.jsx';
 import MetricDetailModal from './components/MetricDetailModal.jsx';
+import FinancialHealthScore from './components/FinancialHealthScore.jsx';
 import { checkAndApplyUrlSync } from './lib/sync.js';
 
 const springAnim = {
@@ -908,8 +909,25 @@ function DashboardTab({
             </div>
           </div>
         )}
+      </div>
 
-        {/* Apple Health Style Metric Cards (Tap any tile for explanation & tool) */}
+      {/* 2. Gamified Financial Health Metric & Score Ring */}
+      <FinancialHealthScore
+        data={{
+          totalCashInBank,
+          totalCreditBalance,
+          totalPortfolioValue,
+          totalVariable,
+          actualNetIncome: _currentNet || 0,
+          relocationSaved,
+          debts,
+          linkedAccountsCount: linkedAccounts.length,
+        }}
+        onOpenMetricModal={setActiveMetricDetail}
+      />
+
+      {/* 3. Apple Health Style Metric Cards (Tap any tile for explanation & tool) */}
+      <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-zinc-900/95 via-zinc-900/80 to-zinc-950/95 border border-zinc-800 shadow-2xl backdrop-blur-2xl space-y-3">
         <div>
           <div className="flex items-center justify-between pb-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
