@@ -31,7 +31,6 @@ import {
   Smartphone,
   Compass,
   Layers,
-  RefreshCw,
 } from 'lucide-react';
 import {
   useFinanceData,
@@ -62,6 +61,7 @@ import WaterfallCashFlow from './components/WaterfallCashFlow.jsx';
 import RelocationGoalWidget from './components/RelocationGoalWidget.jsx';
 import { useSavingsSync } from './lib/useSavingsSync.js';
 import WindfallInterceptorModal from './components/WindfallInterceptorModal.jsx';
+import MetricDetailModal from './components/MetricDetailModal.jsx';
 import { checkAndApplyUrlSync } from './lib/sync.js';
 
 const springAnim = {
@@ -799,6 +799,8 @@ function DashboardTab({
   onDelete: _onDelete,
   onAdd,
 }) {
+  const [activeMetricDetail, setActiveMetricDetail] = useState(null);
+
   const {
     bankAccounts,
     creditAccounts,
@@ -848,14 +850,14 @@ function DashboardTab({
 
   return (
     <div className="space-y-6">
-      {/* 1. Welcoming Snapshot Header */}
+      {/* 1. Apple Health Style Summary Header */}
       <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-zinc-900/95 via-zinc-900/80 to-zinc-950/95 border border-zinc-800 shadow-2xl backdrop-blur-2xl space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-800">
           <div>
             <div className="flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
               <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">
-                Simple Overview
+                Financial Health • Summary
               </span>
             </div>
             <div className="flex items-baseline gap-2 mt-1">
@@ -907,237 +909,247 @@ function DashboardTab({
           </div>
         )}
 
-        {/* 3 Clear, Beginner-Friendly Number Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {/* Card 1: Cash in Bank */}
-          <button
-            type="button"
-            onClick={() => onNavigateTab('wealth')}
-            className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-blue-500/50 text-left transition-all cursor-pointer group shadow-sm"
-          >
-            <div className="flex items-center justify-between text-zinc-400 mb-1.5">
-              <span className="text-xs font-bold flex items-center gap-1.5 text-blue-400">
-                <Building2 size={15} /> Cash in Accounts
-              </span>
-              <ArrowRight size={13} className="text-zinc-600 group-hover:text-blue-400 group-hover:translate-x-0.5 transition-all" />
-            </div>
-            <div className="text-2xl font-black text-white">{formatMoney(totalCashInBank)}</div>
-            <p className="text-[11px] text-zinc-400 mt-1">
-              {bankAccounts.length > 0
-                ? `${bankAccounts.length} account${bankAccounts.length === 1 ? '' : 's'} connected`
-                : 'No bank accounts linked'}
-            </p>
-          </button>
+        {/* Apple Health Style Metric Cards (Tap any tile for explanation & tool) */}
+        <div>
+          <div className="flex items-center justify-between pb-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
+              Favorites & Vitals
+            </span>
+            <span className="text-[10px] text-zinc-500">Tap any tile for info & tools</span>
+          </div>
 
-          {/* Card 2: Debts Owed */}
-          <button
-            type="button"
-            onClick={() => onNavigateTab('debts')}
-            className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-amber-500/50 text-left transition-all cursor-pointer group shadow-sm"
-          >
-            <div className="flex items-center justify-between text-zinc-400 mb-1.5">
-              <span className="text-xs font-bold flex items-center gap-1.5 text-amber-400">
-                <CreditCard size={15} /> Credit & Debts Owed
-              </span>
-              <ArrowRight size={13} className="text-zinc-600 group-hover:text-amber-400 group-hover:translate-x-0.5 transition-all" />
-            </div>
-            <div className="text-2xl font-black text-amber-400">
-              {totalCreditBalance > 0 ? `-${formatMoney(totalCreditBalance)}` : '$0.00'}
-            </div>
-            <p className="text-[11px] text-zinc-400 mt-1">
-              {creditAccounts.length > 0
-                ? `${creditAccounts.length} card balance${creditAccounts.length === 1 ? '' : 's'}`
-                : (debts.length > 0 ? `${debts.length} active debt${debts.length === 1 ? '' : 's'}` : 'No debts linked')}
-            </p>
-          </button>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {/* Tile 1: Cash in Accounts */}
+            <button
+              type="button"
+              onClick={() => setActiveMetricDetail('cash')}
+              className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-blue-500/50 text-left transition-all cursor-pointer group shadow-sm flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between text-zinc-400 mb-1.5">
+                  <span className="text-xs font-bold flex items-center gap-1.5 text-blue-400">
+                    <Building2 size={15} /> Cash in Accounts
+                  </span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-blue-500/10 text-blue-300 border border-blue-500/20 group-hover:bg-blue-500/20 transition-colors">
+                    Info ↗
+                  </span>
+                </div>
+                <div className="text-2xl font-black text-white">{formatMoney(totalCashInBank)}</div>
+              </div>
+              <p className="text-[11px] text-zinc-400 mt-2">
+                {bankAccounts.length > 0
+                  ? `${bankAccounts.length} account${bankAccounts.length === 1 ? '' : 's'} linked`
+                  : 'Checking & Savings'}
+              </p>
+            </button>
 
-          {/* Card 3: Investments */}
-          <button
-            type="button"
-            onClick={() => onNavigateTab('wealth')}
-            className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-emerald-500/50 text-left transition-all cursor-pointer group shadow-sm"
-          >
-            <div className="flex items-center justify-between text-zinc-400 mb-1.5">
-              <span className="text-xs font-bold flex items-center gap-1.5 text-emerald-400">
-                <TrendingUp size={15} /> Investments & Stocks
-              </span>
-              <ArrowRight size={13} className="text-zinc-600 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-all" />
-            </div>
-            <div className="text-2xl font-black text-emerald-400">{formatMoney(totalPortfolioValue)}</div>
-            <p className="text-[11px] text-zinc-400 mt-1">
-              {investmentAccounts.length > 0
-                ? `${investmentAccounts.length} investment account${investmentAccounts.length === 1 ? '' : 's'}`
-                : (totalPortfolioValue > 0 ? 'Robinhood & retirement assets' : 'No portfolio linked')}
-            </p>
-          </button>
+            {/* Tile 2: Spent This Month */}
+            <button
+              type="button"
+              onClick={() => setActiveMetricDetail('spending')}
+              className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-orange-500/50 text-left transition-all cursor-pointer group shadow-sm flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between text-zinc-400 mb-1.5">
+                  <span className="text-xs font-bold flex items-center gap-1.5 text-orange-400">
+                    <CreditCard size={15} /> Spent This Month
+                  </span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-orange-500/10 text-orange-300 border border-orange-500/20 group-hover:bg-orange-500/20 transition-colors">
+                    Info ↗
+                  </span>
+                </div>
+                <div className="text-2xl font-black text-orange-400">{formatMoney(totalVariable)}</div>
+              </div>
+              <p className="text-[11px] text-zinc-400 mt-2">
+                Food, gas, dining & shopping
+              </p>
+            </button>
+
+            {/* Tile 3: Bills & Debts */}
+            <button
+              type="button"
+              onClick={() => setActiveMetricDetail('debts')}
+              className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-amber-500/50 text-left transition-all cursor-pointer group shadow-sm flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between text-zinc-400 mb-1.5">
+                  <span className="text-xs font-bold flex items-center gap-1.5 text-amber-400">
+                    <Car size={15} /> Bills & Debts Owed
+                  </span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/20 group-hover:bg-amber-500/20 transition-colors">
+                    Info ↗
+                  </span>
+                </div>
+                <div className="text-2xl font-black text-amber-400">
+                  {totalCreditBalance > 0 ? `-${formatMoney(totalCreditBalance)}` : '$0.00'}
+                </div>
+              </div>
+              <p className="text-[11px] text-zinc-400 mt-2">
+                {creditAccounts.length > 0
+                  ? `${creditAccounts.length} card balance${creditAccounts.length === 1 ? '' : 's'}`
+                  : (debts.length > 0 ? `${debts.length} active debt${debts.length === 1 ? '' : 's'}` : 'No debts linked')}
+              </p>
+            </button>
+
+            {/* Tile 4: Move & Emergency Cushion */}
+            <button
+              type="button"
+              onClick={() => setActiveMetricDetail('goal_cushion')}
+              className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-cyan-500/50 text-left transition-all cursor-pointer group shadow-sm flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between text-zinc-400 mb-1.5">
+                  <span className="text-xs font-bold flex items-center gap-1.5 text-cyan-400">
+                    <Compass size={15} /> Move Cushion Goal
+                  </span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 group-hover:bg-cyan-500/20 transition-colors">
+                    Info ↗
+                  </span>
+                </div>
+                <div className="text-2xl font-black text-white">
+                  {formatMoney(relocationSaved)}{' '}
+                  <span className="text-xs text-zinc-400 font-normal">/ {formatMoney(relocationTarget)}</span>
+                </div>
+                <div className="w-full h-2 rounded-full bg-zinc-900 border border-zinc-800 overflow-hidden mt-2">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-teal-400 transition-all duration-700"
+                    style={{ width: `${relocationPct}%` }}
+                  />
+                </div>
+              </div>
+              <p className="text-[11px] text-cyan-400 mt-2 font-semibold">
+                {relocationPct}% Funded • Phase 1 Priority
+              </p>
+            </button>
+
+            {/* Tile 5: Investments & Growth */}
+            <button
+              type="button"
+              onClick={() => setActiveMetricDetail('investments')}
+              className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-emerald-500/50 text-left transition-all cursor-pointer group shadow-sm flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between text-zinc-400 mb-1.5">
+                  <span className="text-xs font-bold flex items-center gap-1.5 text-emerald-400">
+                    <TrendingUp size={15} /> Investments & Growth
+                  </span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 group-hover:bg-emerald-500/20 transition-colors">
+                    Info ↗
+                  </span>
+                </div>
+                <div className="text-2xl font-black text-emerald-400">{formatMoney(totalPortfolioValue)}</div>
+              </div>
+              <p className="text-[11px] text-zinc-400 mt-2">
+                Robinhood, 401(k) & stocks
+              </p>
+            </button>
+
+            {/* Tile 6: Paycheck Cash Flow */}
+            <button
+              type="button"
+              onClick={() => setActiveMetricDetail('sim_waterfall')}
+              className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-indigo-500/50 text-left transition-all cursor-pointer group shadow-sm flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between text-zinc-400 mb-1.5">
+                  <span className="text-xs font-bold flex items-center gap-1.5 text-indigo-400">
+                    <Layers size={15} /> Monthly Cash Flow
+                  </span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 group-hover:bg-indigo-500/20 transition-colors">
+                    Info ↗
+                  </span>
+                </div>
+                <div className="text-2xl font-black text-indigo-400">
+                  {_currentNet > 0 ? `${formatMoney(_currentNet)}/mo` : '$0.00'}
+                </div>
+              </div>
+              <p className="text-[11px] text-zinc-400 mt-2">
+                Paycheck flow & savings surplus
+              </p>
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* 2. Visual "Current Focus" Progress Banner (Zero Jargon) */}
-      <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-cyan-950/40 via-zinc-900 to-indigo-950/30 border border-cyan-500/30 shadow-xl backdrop-blur-xl space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="p-1.5 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
-              <Compass size={16} />
-            </span>
-            <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-400 block">
-                Primary Mission • Phase 1
-              </span>
-              <h3 className="text-base font-bold text-white">Save $3,000 for Move</h3>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => onNavigateTab('optimize')}
-            className="self-start sm:self-auto px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 text-xs font-bold border border-cyan-500/30 flex items-center gap-1 transition-all cursor-pointer"
-          >
-            <span>View Goal & Simulators</span>
-            <ArrowRight size={13} />
-          </button>
-        </div>
-
-        {/* Visual Progress Bar */}
-        <div className="space-y-1.5 pt-1">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-zinc-300 font-medium">
-              Saved <strong className="text-white font-mono">{formatMoney(relocationSaved)}</strong> of {formatMoney(relocationTarget)}
-            </span>
-            <span className="font-bold text-cyan-400">{relocationPct}% Funded</span>
-          </div>
-          <div className="w-full h-3 rounded-full bg-zinc-950 border border-zinc-800 overflow-hidden p-0.5">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-teal-400 transition-all duration-700"
-              style={{ width: `${relocationPct}%` }}
-            />
-          </div>
-          <p className="text-[11px] text-zinc-400 pt-1 leading-relaxed">
-            First priority is securing the $3,000 apartment move fund. The car loan payoff sprint starts right after in January.
-          </p>
-        </div>
-      </div>
-
-      {/* 3. Explore & Drill Down (4 Clear Doors) */}
+      {/* 2. Apple Health Discover: Interactive Smart Tools */}
       <div className="space-y-3">
         <div className="flex items-center justify-between px-1">
           <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-400">
-            Explore Your Finances
+            Smart Interactive Simulators
           </h3>
-          <span className="text-[11px] text-zinc-500">Tap any section to see details</span>
+          <span className="text-[11px] text-zinc-500">Tap to test calculators</span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {/* Tile 1: Spending */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* Tool 1: 401(k) Tax Shield */}
           <button
             type="button"
-            onClick={() => onNavigateTab('spending')}
-            className="p-4 rounded-3xl bg-zinc-900/80 hover:bg-zinc-850 border border-zinc-800 hover:border-blue-500/40 text-left transition-all cursor-pointer group shadow-lg"
+            onClick={() => setActiveMetricDetail('sim_tax')}
+            className="p-4 rounded-2xl bg-zinc-900/80 hover:bg-zinc-850 border border-zinc-800 hover:border-indigo-500/40 text-left transition-all cursor-pointer group shadow-lg flex flex-col justify-between"
           >
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-blue-500/20 text-blue-400 border border-blue-500/30 flex items-center justify-center">
-                  <CreditCard size={18} />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-white group-hover:text-blue-300 transition-colors">
-                    Spending
-                  </h4>
-                  <span className="text-[11px] text-zinc-400">
-                    {formatMoney(totalVariable)} logged this month
-                  </span>
-                </div>
+            <div className="space-y-1.5">
+              <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center">
+                <Sparkles size={16} />
               </div>
-              <ArrowRight size={16} className="text-zinc-600 group-hover:text-blue-400 group-hover:translate-x-1 transition-all" />
+              <h4 className="text-sm font-bold text-white group-hover:text-indigo-300 transition-colors">
+                Paycheck & 401(k) Match
+              </h4>
+              <p className="text-[11px] text-zinc-400 leading-snug">
+                See how investing into your 401(k) lowers your paycheck tax bill.
+              </p>
             </div>
-            <p className="text-xs text-zinc-400">
-              See what you spent on groceries, dining out, gas, and shopping.
-            </p>
+            <span className="mt-3 text-xs font-bold text-indigo-400 flex items-center gap-1">
+              Try Simulator <ArrowRight size={12} className="group-hover:translate-x-0.5 transition-transform" />
+            </span>
           </button>
 
-          {/* Tile 2: Bills & Debts */}
+          {/* Tool 2: Car Loan Speedometer */}
           <button
             type="button"
-            onClick={() => onNavigateTab('debts')}
-            className="p-4 rounded-3xl bg-zinc-900/80 hover:bg-zinc-850 border border-zinc-800 hover:border-amber-500/40 text-left transition-all cursor-pointer group shadow-lg"
+            onClick={() => setActiveMetricDetail('sim_car')}
+            className="p-4 rounded-2xl bg-zinc-900/80 hover:bg-zinc-850 border border-zinc-800 hover:border-amber-500/40 text-left transition-all cursor-pointer group shadow-lg flex flex-col justify-between"
           >
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center">
-                  <Car size={18} />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-white group-hover:text-amber-300 transition-colors">
-                    Bills & Debts
-                  </h4>
-                  <span className="text-[11px] text-zinc-400">
-                    {formatMoney(totalFixed)}/mo fixed • {debts.length} active debts
-                  </span>
-                </div>
+            <div className="space-y-1.5">
+              <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center">
+                <Car size={16} />
               </div>
-              <ArrowRight size={16} className="text-zinc-600 group-hover:text-amber-400 group-hover:translate-x-1 transition-all" />
+              <h4 className="text-sm font-bold text-white group-hover:text-amber-300 transition-colors">
+                Car Payoff Speedometer
+              </h4>
+              <p className="text-[11px] text-zinc-400 leading-snug">
+                Slide extra monthly payments to see months and interest saved.
+              </p>
             </div>
-            <p className="text-xs text-zinc-400">
-              Review monthly subscriptions, rent, auto insurance, and car loan payoff plan.
-            </p>
+            <span className="mt-3 text-xs font-bold text-amber-400 flex items-center gap-1">
+              Try Simulator <ArrowRight size={12} className="group-hover:translate-x-0.5 transition-transform" />
+            </span>
           </button>
 
-          {/* Tile 3: Simulators & Optimization */}
+          {/* Tool 3: Money Flow Waterfall */}
           <button
             type="button"
-            onClick={() => onNavigateTab('optimize')}
-            className="p-4 rounded-3xl bg-zinc-900/80 hover:bg-zinc-850 border border-zinc-800 hover:border-indigo-500/40 text-left transition-all cursor-pointer group shadow-lg"
+            onClick={() => setActiveMetricDetail('sim_waterfall')}
+            className="p-4 rounded-2xl bg-zinc-900/80 hover:bg-zinc-850 border border-zinc-800 hover:border-teal-500/40 text-left transition-all cursor-pointer group shadow-lg flex flex-col justify-between"
           >
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center">
-                  <Sparkles size={18} />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-white group-hover:text-indigo-300 transition-colors">
-                    Smart Tools & Simulators
-                  </h4>
-                  <span className="text-[11px] text-zinc-400">
-                    Tax slider, payoff gauge & waterfall
-                  </span>
-                </div>
+            <div className="space-y-1.5">
+              <div className="w-8 h-8 rounded-xl bg-teal-500/20 text-teal-400 border border-teal-500/30 flex items-center justify-center">
+                <Layers size={16} />
               </div>
-              <ArrowRight size={16} className="text-zinc-600 group-hover:text-indigo-400 group-hover:translate-x-1 transition-all" />
+              <h4 className="text-sm font-bold text-white group-hover:text-teal-300 transition-colors">
+                Money Flow Waterfall
+              </h4>
+              <p className="text-[11px] text-zinc-400 leading-snug">
+                Follow where every single dollar of your net paycheck travels.
+              </p>
             </div>
-            <p className="text-xs text-zinc-400">
-              Interactive calculators to simulate 401(k) tax savings, payoff speeds, and saving tips.
-            </p>
-          </button>
-
-          {/* Tile 4: Investments & Wealth */}
-          <button
-            type="button"
-            onClick={() => onNavigateTab('wealth')}
-            className="p-4 rounded-3xl bg-zinc-900/80 hover:bg-zinc-850 border border-zinc-800 hover:border-emerald-500/40 text-left transition-all cursor-pointer group shadow-lg"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center">
-                  <TrendingUp size={18} />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-white group-hover:text-emerald-300 transition-colors">
-                    Investments & Wealth
-                  </h4>
-                  <span className="text-[11px] text-zinc-400">
-                    {formatMoney(totalPortfolioValue)} portfolio
-                  </span>
-                </div>
-              </div>
-              <ArrowRight size={16} className="text-zinc-600 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all" />
-            </div>
-            <p className="text-xs text-zinc-400">
-              Track your Robinhood stocks, Roth IRA, and 10-year wealth compounding chart.
-            </p>
+            <span className="mt-3 text-xs font-bold text-teal-400 flex items-center gap-1">
+              Try Simulator <ArrowRight size={12} className="group-hover:translate-x-0.5 transition-transform" />
+            </span>
           </button>
         </div>
       </div>
 
-      {/* 4. Recent Purchases (Simple & Clean) */}
+      {/* 3. Recent Purchases */}
       {recentTransactionsPreview.length > 0 && (
         <div className="p-5 rounded-3xl bg-zinc-900/70 border border-zinc-800 shadow-xl backdrop-blur-xl space-y-3">
           <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
@@ -1167,7 +1179,7 @@ function DashboardTab({
         </div>
       )}
 
-      {/* 5. Friendly Quick Action Bar */}
+      {/* 4. Friendly Quick Action Bar */}
       <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
         {onAdd && (
           <button
@@ -1193,11 +1205,40 @@ function DashboardTab({
             onClick={onOpenSync}
             className="px-4 py-2.5 rounded-2xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold flex items-center gap-1.5 border border-zinc-700 active:scale-95 transition-all cursor-pointer"
           >
-            <RefreshCw size={14} className="text-emerald-400" />
+            <Smartphone size={14} className="text-emerald-400" />
             <span>Sync to Phone</span>
           </button>
         )}
       </div>
+
+      {/* Apple Health Style Metric Detail Modal */}
+      <MetricDetailModal
+        isOpen={Boolean(activeMetricDetail)}
+        metricType={activeMetricDetail}
+        onClose={() => setActiveMetricDetail(null)}
+        data={{
+          totalCashInBank,
+          totalCreditBalance,
+          totalPortfolioValue,
+          totalVariable,
+          totalFixed,
+          bankAccounts,
+          creditAccounts,
+          investmentAccounts: linkedAccounts.filter(
+            (a) => a.type === 'investment' || a.subtype === 'brokerage' || a.subtype === '401k' || a.subtype === 'ira'
+          ),
+          debts,
+          entries,
+          budgets: _budgets || {},
+          relocationSaved,
+          relocationTarget,
+          actualNetIncome: _currentNet || 0,
+          vehicleLoanBalance: debts.find(d => (d.name||'').toLowerCase().includes('car') || (d.name||'').toLowerCase().includes('kia') || (d.name||'').toLowerCase().includes('loan'))?.balance || 0,
+        }}
+        onNavigateTab={onNavigateTab}
+        onOpenLink={onOpenLink}
+        onAddEntry={onAdd}
+      />
     </div>
   );
 }
@@ -2438,6 +2479,7 @@ function OptimizationTab({
   onAddFoodEntry,
 }) {
   const [subTab, setSubTab] = useState('simulators'); // 'simulators' | 'behavioral' | 'budget_caps'
+  const [activeSimTool, setActiveSimTool] = useState('cushion'); // 'cushion' | 'waterfall' | 'car' | 'tax' | 'all'
   const [appliedAll, setAppliedAll] = useState(false);
   const [appliedCategory, setAppliedCategory] = useState({});
   const [activeFilter, setActiveFilter] = useState('all'); // 'all', 'cut', 'reduce'
@@ -2512,29 +2554,62 @@ function OptimizationTab({
       </div>
 
       {subTab === 'simulators' ? (
-        <div className="space-y-6">
+        <div className="space-y-4">
+          {/* Tool Picker Selector (Apple Health Style) */}
+          <div className="flex bg-zinc-950/70 p-1 rounded-2xl border border-zinc-800 gap-1 overflow-x-auto no-scrollbar">
+            {[
+              { id: 'cushion', label: 'Move Cushion ($3k)', icon: <Compass size={13} className="text-cyan-400" /> },
+              { id: 'waterfall', label: 'Cash Flow Waterfall', icon: <Layers size={13} className="text-teal-400" /> },
+              { id: 'car', label: 'Car Payoff', icon: <Car size={13} className="text-amber-400" /> },
+              { id: 'tax', label: '401(k) Tax Shield', icon: <Sparkles size={13} className="text-yellow-400" /> },
+              { id: 'all', label: 'Show All Tools', icon: <Plus size={13} className="text-zinc-400" /> },
+            ].map((tool) => (
+              <button
+                key={tool.id}
+                type="button"
+                onClick={() => setActiveSimTool(tool.id)}
+                className={`py-1.5 px-3 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer whitespace-nowrap transition-all ${
+                  activeSimTool === tool.id
+                    ? 'bg-zinc-800 text-white shadow-sm'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                {tool.icon}
+                <span>{tool.label}</span>
+              </button>
+            ))}
+          </div>
+
           {/* 1. Relocation Goal Widget (Phase 1 Priority • $3,000 Cap) */}
-          <RelocationGoalWidget cap={3000} emergencyTarget={10000} />
+          {(activeSimTool === 'cushion' || activeSimTool === 'all') && (
+            <RelocationGoalWidget cap={3000} emergencyTarget={10000} />
+          )}
 
           {/* 2. Waterfall Cash Flow (Prioritizing Relocation) */}
-          <WaterfallCashFlow
-            netIncome={actualNetIncome}
-            rentExpense={budgets?.['rent'] || budgets?.['housing'] || 0}
-            groceryExpense={budgets?.['groceries'] || budgets?.['food'] || 0}
-          />
+          {(activeSimTool === 'waterfall' || activeSimTool === 'all') && (
+            <WaterfallCashFlow
+              netIncome={actualNetIncome}
+              rentExpense={budgets?.['rent'] || budgets?.['housing'] || 0}
+              groceryExpense={budgets?.['groceries'] || budgets?.['food'] || 0}
+            />
+          )}
 
           {/* 3. Kia Payoff Gauge (Phase 2 • Starts in January) */}
-          <KiaPayoffGauge
-            loanBalance={vehicleLoanBalance}
-            annualApr={0.125}
-            baseMinPayment={vehicleLoanBalance > 0 ? 230 : 0}
-          />
+          {(activeSimTool === 'car' || activeSimTool === 'all') && (
+            <KiaPayoffGauge
+              loanBalance={vehicleLoanBalance}
+              annualApr={0.125}
+              baseMinPayment={vehicleLoanBalance > 0 ? 230 : 0}
+            />
+          )}
 
           {/* 4. Tax Shield Slider */}
-          <TaxShieldSlider
-            annualSalary={actualNetIncome > 0 ? actualNetIncome * 12 : 0}
-            marginalTaxRate={0.30}
-          />
+          {(activeSimTool === 'tax' || activeSimTool === 'all') && (
+            <TaxShieldSlider
+              annualSalary={actualNetIncome > 0 ? actualNetIncome * 12 : 0}
+              marginalTaxRate={0.30}
+            />
+          )}
         </div>
       ) : subTab === 'behavioral' ? (
         <div className="space-y-6">
