@@ -63,6 +63,7 @@ import { useSavingsSync } from './lib/useSavingsSync.js';
 import WindfallInterceptorModal from './components/WindfallInterceptorModal.jsx';
 import MetricDetailModal from './components/MetricDetailModal.jsx';
 import FinancialHealthScore from './components/FinancialHealthScore.jsx';
+import WealthBuckets from './components/WealthBuckets.jsx';
 import { checkAndApplyUrlSync, pullSyncFromRelay } from './lib/sync.js';
 import { pullPlaidConfigFromCloud } from './lib/supabase.js';
 
@@ -844,11 +845,6 @@ function DashboardTab({
   const totalNetWorth = totalAssets - totalDebts;
   const netAvailable = totalCashInBank - totalCreditBalance;
 
-  const balanceSheetVolume = totalCashInBank + totalPortfolioValue + totalDebts;
-  const cashBarPct = balanceSheetVolume > 0 ? Math.round((totalCashInBank / balanceSheetVolume) * 100) : 0;
-  const investBarPct = balanceSheetVolume > 0 ? Math.round((totalPortfolioValue / balanceSheetVolume) * 100) : 0;
-  const debtBarPct = balanceSheetVolume > 0 ? Math.max(0, 100 - cashBarPct - investBarPct) : 0;
-
   // 3 most recent transactions preview
   const recentTransactionsPreview = useMemo(() => {
     return entries
@@ -945,100 +941,17 @@ function DashboardTab({
           </div>
         </div>
 
-        {/* Bigger Picture Proportional Balance Bar (Cash vs Investments vs Debt) */}
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-[10px] font-semibold text-zinc-400 px-0.5">
-              <span>Balance Sheet Mix (Cash + Investments vs. Debt)</span>
-              <span className="text-zinc-300">
-                Assets {formatMoney(totalAssets)} · Debt {formatMoney(totalDebts)}
-              </span>
-            </div>
-            <div className="w-full h-2 rounded-full bg-zinc-950 border border-zinc-800 overflow-hidden flex">
-              {balanceSheetVolume > 0 ? (
-                <>
-                  {cashBarPct > 0 && (
-                    <div
-                      className="h-full bg-blue-500 transition-all duration-700"
-                      style={{ width: `${cashBarPct}%` }}
-                      title={`Cash: ${cashBarPct}%`}
-                    />
-                  )}
-                  {investBarPct > 0 && (
-                    <div
-                      className="h-full bg-emerald-500 transition-all duration-700"
-                      style={{ width: `${investBarPct}%` }}
-                      title={`Investments: ${investBarPct}%`}
-                    />
-                  )}
-                  {debtBarPct > 0 && (
-                    <div
-                      className="h-full bg-amber-500 transition-all duration-700"
-                      style={{ width: `${debtBarPct}%` }}
-                      title={`Debt: ${debtBarPct}%`}
-                    />
-                  )}
-                </>
-              ) : (
-                <div className="h-full w-full bg-zinc-800/40" />
-              )}
-            </div>
-          </div>
-
-          {/* Symmetrical 3-Column Bigger Picture Pillars */}
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={() => setActiveMetricDetail('cash')}
-              className="p-2.5 sm:p-3 rounded-2xl bg-zinc-950/80 border border-zinc-800/90 hover:border-blue-500/40 text-left transition-all cursor-pointer"
-            >
-              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-blue-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
-                <span className="truncate">Cash</span>
-              </div>
-              <div className="text-xs sm:text-base font-black text-white mt-1 truncate">
-                {formatMoney(totalCashInBank)}
-              </div>
-              <p className="text-[10px] text-zinc-500 truncate mt-0.5">
-                Checking & Savings
-              </p>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveMetricDetail('investments')}
-              className="p-2.5 sm:p-3 rounded-2xl bg-zinc-950/80 border border-zinc-800/90 hover:border-emerald-500/40 text-left transition-all cursor-pointer"
-            >
-              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-emerald-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-                <span className="truncate">Investments</span>
-              </div>
-              <div className="text-xs sm:text-base font-black text-emerald-400 mt-1 truncate">
-                {formatMoney(totalPortfolioValue)}
-              </div>
-              <p className="text-[10px] text-zinc-500 truncate mt-0.5">
-                Stocks & Retirement
-              </p>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveMetricDetail('debts')}
-              className="p-2.5 sm:p-3 rounded-2xl bg-zinc-950/80 border border-zinc-800/90 hover:border-amber-500/40 text-left transition-all cursor-pointer"
-            >
-              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-amber-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-                <span className="truncate">Total Debt</span>
-              </div>
-              <div className="text-xs sm:text-base font-black text-amber-400 mt-1 truncate">
-                {totalDebts > 0 ? `-${formatMoney(totalDebts)}` : '$0.00'}
-              </div>
-              <p className="text-[10px] text-zinc-500 truncate mt-0.5">
-                Cards & Loans
-              </p>
-            </button>
-          </div>
-        </div>
+        {/* Gamified Animated Liquid Wealth Buckets (Cash • Investments • Debt) */}
+        <WealthBuckets
+          totalCashInBank={totalCashInBank}
+          totalPortfolioValue={totalPortfolioValue}
+          totalDebts={totalDebts}
+          totalCreditBalance={totalCreditBalance}
+          totalNetWorth={totalNetWorth}
+          debts={debts}
+          linkedAccountsCount={linkedAccounts.length}
+          onSelectMetric={setActiveMetricDetail}
+        />
 
         {/* Informational banner when no accounts are connected */}
         {linkedAccounts.length === 0 && debts.length === 0 && (

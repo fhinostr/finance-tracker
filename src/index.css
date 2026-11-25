@@ -33,3 +33,62 @@ iframe[id^="plaid-link-iframe"],
 .plaid-link-iframe {
   z-index: 2147483647 !important;
 }
+
+/* Smooth GPU-accelerated liquid wave & bubble animations for Gamified Wealth Buckets */
+@keyframes bucketWaveSlide {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+@keyframes bucketBubbleRise {
+  0% {
+    transform: translate3d(0, 0, 0) scale(0.75);
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.65;
+  }
+  100% {
+    transform: translate3d(0, -44px, 0) scale(1.1);
+    opacity: 0;
+  }
+}
+
+@keyframes xpShimmer {
+  0% {
+    transform: translate3d(-100%, 0, 0);
+  }
+  100% {
+    transform: translate3d(200%, 0, 0);
+  }
+}
+
+.bucket-wave-fast {
+  animation: bucketWaveSlide 3.2s linear infinite;
+  will-change: transform;
+}
+
+.bucket-wave-slow {
+  animation: bucketWaveSlide 5.4s linear infinite reverse;
+  will-change: transform;
+}
+
+.bucket-bubble-1 {
+  animation: bucketBubbleRise 2.8s ease-in infinite;
+}
+
+.bucket-bubble-2 {
+  animation: bucketBubbleRise 3.6s ease-in 0.9s infinite;
+}
+
+.bucket-bubble-3 {
+  animation: bucketBubbleRise 3.1s ease-in 1.7s infinite;
+}
+
+.xp-bar-shimmer {
+  animation: xpShimmer 2.8s ease-in-out infinite;
+}
