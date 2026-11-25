@@ -221,7 +221,7 @@ export default function MetricDetailModal({
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: '100%', opacity: 0 }}
           transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-          className="relative w-full max-w-xl max-h-[92vh] sm:max-h-[85vh] bg-zinc-950 border-t sm:border border-zinc-800 rounded-t-[32px] sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden z-10"
+          className="relative w-full max-w-xl max-h-[84vh] sm:max-h-[85vh] bg-zinc-950 border-t sm:border border-zinc-800 rounded-t-[32px] sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden z-10"
         >
           {/* iOS-style drag handle */}
           <div className="w-12 h-1.5 bg-zinc-700/60 rounded-full mx-auto mt-3 mb-1 sm:hidden shrink-0" />

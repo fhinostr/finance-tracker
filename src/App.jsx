@@ -366,7 +366,7 @@ export default function PersonalFinanceTracker() {
   };
 
   return (
-    <div className="relative min-h-screen bg-black text-white font-sans selection:bg-blue-500/30 p-4 sm:p-8">
+    <div className="relative min-h-screen bg-black text-white font-sans selection:bg-blue-500/30 app-safe-top px-4 pb-6 sm:px-8">
       {/* Ambient Liquid Background */}
       <div className="fixed top-[-10%] left-[-10%] w-[500px] h-[500px] bg-purple-600/30 rounded-full mix-blend-screen filter blur-[120px] opacity-70 pointer-events-none animate-pulse" />
       <div
@@ -374,37 +374,73 @@ export default function PersonalFinanceTracker() {
         style={{ animationDelay: '2s' }}
       />
 
-      <div className="relative z-10 max-w-md mx-auto min-h-screen flex flex-col space-y-6 pb-24">
-        {/* Header - Income Tracking */}
+      <div className="relative z-10 max-w-md mx-auto min-h-screen flex flex-col space-y-5 pb-24">
+        {/* Header - Income Tracking & Mobile-Friendly Action Bar */}
         <motion.header
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex justify-between items-start pt-4"
+          className="flex flex-col gap-3.5 pt-2"
         >
-          <div>
-            <p className="text-gray-400 text-sm font-medium tracking-wide uppercase mb-1">Monthly Net Income</p>
-            <h1 className="text-5xl font-semibold tracking-tight">
-              ${Math.floor(currentNet).toLocaleString()}
-              <span className="text-2xl text-gray-500">
-                .{(currentNet % 1).toFixed(2).slice(2)}
-              </span>
-            </h1>
-            {bonusNet > 0 && (
-              <button
-                onClick={() => setIncludeBonus(!includeBonus)}
-                className={`mt-3 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
-                  includeBonus
-                    ? 'bg-green-500/20 border-green-500/50 text-green-400'
-                    : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'
-                }`}
-              >
-                {includeBonus
-                  ? `+ ${formatMoney(bonusNet)} Net Bonus Applied`
-                  : `Include Performance Bonus (${formatMoney(bonusNet)})`}
-              </button>
-            )}
+          {/* Top Row: Monthly Net Income & Quick Add Button */}
+          <div className="flex justify-between items-center">
+            <div>
+              <p className="text-gray-400 text-xs sm:text-sm font-medium tracking-wide uppercase mb-0.5">
+                Monthly Net Income
+              </p>
+              <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight">
+                ${Math.floor(currentNet).toLocaleString()}
+                <span className="text-xl sm:text-2xl text-gray-500">
+                  .{(currentNet % 1).toFixed(2).slice(2)}
+                </span>
+              </h1>
+              {bonusNet > 0 && (
+                <button
+                  onClick={() => setIncludeBonus(!includeBonus)}
+                  className={`mt-2 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+                    includeBonus
+                      ? 'bg-green-500/20 border-green-500/50 text-green-400'
+                      : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'
+                  }`}
+                >
+                  {includeBonus
+                    ? `+ ${formatMoney(bonusNet)} Net Bonus Applied`
+                    : `Include Performance Bonus (${formatMoney(bonusNet)})`}
+                </button>
+              )}
+            </div>
+
+            <button
+              onClick={() => openAdd(false)}
+              aria-label="Add income or entry"
+              className="h-11 w-11 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 transition-all backdrop-blur-md border border-white/20 flex items-center justify-center shadow-lg shrink-0 cursor-pointer"
+            >
+              <DollarSign className="text-green-400" size={20} />
+            </button>
           </div>
-          <div className="flex items-center gap-2">
+
+          {/* Second Row: Always-Visible Pill Action Bar (Never cut off on mobile) */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => {
+                setLinkedAccounts(getStoredAccounts());
+                setShowLinkedModal(true);
+              }}
+              aria-label="Linked bank and Robinhood accounts"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 transition-all backdrop-blur-md border border-white/20 text-xs font-semibold text-gray-100 shadow-lg cursor-pointer"
+            >
+              <Building2 className="text-blue-400 shrink-0" size={15} />
+              <span>{linkedAccounts.length > 0 ? `${linkedAccounts.length} Linked` : 'Link Accounts'}</span>
+            </button>
+
+            <button
+              onClick={() => setShowSyncModal(true)}
+              title="Sync to Phone & Devices"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 active:scale-95 transition-all backdrop-blur-md border border-emerald-500/30 text-xs font-semibold text-emerald-300 shadow-lg cursor-pointer"
+            >
+              <Smartphone className="text-emerald-400 shrink-0" size={15} />
+              <span>Sync Phone</span>
+            </button>
+
             <button
               onClick={() => {
                 setWindfallData({
@@ -414,36 +450,10 @@ export default function PersonalFinanceTracker() {
                 setIsWindfallModalOpen(true);
               }}
               title="Test Windfall Interceptor Modal (Phase 5)"
-              className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-amber-500/15 hover:bg-amber-500/25 active:scale-95 transition-all backdrop-blur-md border border-amber-500/30 text-xs font-semibold text-amber-300 shadow-lg cursor-pointer"
+              className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-amber-500/15 hover:bg-amber-500/25 active:scale-95 transition-all backdrop-blur-md border border-amber-500/30 text-xs font-semibold text-amber-300 shadow-lg cursor-pointer"
             >
-              <Sparkles className="text-amber-400" size={15} />
-              <span className="hidden sm:inline">Windfall ($980)</span>
-            </button>
-            <button
-              onClick={() => setShowSyncModal(true)}
-              title="Sync to Phone & Devices"
-              className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-emerald-500/15 hover:bg-emerald-500/25 active:scale-95 transition-all backdrop-blur-md border border-emerald-500/30 text-xs font-semibold text-emerald-300 shadow-lg"
-            >
-              <Smartphone className="text-emerald-400" size={15} />
-              <span className="hidden sm:inline">Sync Phone</span>
-            </button>
-            <button
-              onClick={() => {
-                setLinkedAccounts(getStoredAccounts());
-                setShowLinkedModal(true);
-              }}
-              aria-label="Linked bank and Robinhood accounts"
-              className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 transition-all backdrop-blur-md border border-white/20 text-xs font-semibold text-gray-200 shadow-lg"
-            >
-              <Building2 className="text-blue-400" size={15} />
-              <span>{linkedAccounts.length > 0 ? `${linkedAccounts.length} Linked` : 'Link Accounts'}</span>
-            </button>
-            <button
-              onClick={() => openAdd(false)}
-              aria-label="Add income or entry"
-              className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 transition-all backdrop-blur-md border border-white/20 flex items-center justify-center shadow-lg"
-            >
-              <DollarSign className="text-green-400" size={20} />
+              <Sparkles className="text-amber-400 shrink-0" size={15} />
+              <span>Bonus Tool</span>
             </button>
           </div>
         </motion.header>

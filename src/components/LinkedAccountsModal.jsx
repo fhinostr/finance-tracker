@@ -503,7 +503,7 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
         transition={{ type: 'spring', stiffness: 320, damping: 34 }}
-        className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-t-[32px] sm:rounded-[32px] bg-zinc-900/95 backdrop-blur-2xl border border-white/15 shadow-2xl p-6"
+        className="relative w-full max-w-lg max-h-[84vh] sm:max-h-[88vh] overflow-y-auto rounded-t-[32px] sm:rounded-[32px] bg-zinc-900/95 backdrop-blur-2xl border border-white/15 shadow-2xl p-6"
       >
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-white/10">
