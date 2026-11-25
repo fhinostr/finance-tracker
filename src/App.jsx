@@ -434,27 +434,27 @@ export default function PersonalFinanceTracker() {
             </button>
           </div>
 
-          {/* Second Row: Always-Visible Pill Action Bar (Never cut off on mobile) */}
-          <div className="flex flex-wrap items-center gap-2">
+          {/* Second Row: Symmetrical 3-Column Pill Action Bar */}
+          <div className="grid grid-cols-3 gap-2">
             <button
               onClick={() => {
                 setLinkedAccounts(getStoredAccounts());
                 setShowLinkedModal(true);
               }}
               aria-label="Linked bank and Robinhood accounts"
-              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 transition-all backdrop-blur-md border border-white/20 text-xs font-semibold text-gray-100 shadow-lg cursor-pointer"
+              className="w-full flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 transition-all backdrop-blur-md border border-white/20 text-[11px] sm:text-xs font-semibold text-gray-100 shadow-lg cursor-pointer whitespace-nowrap"
             >
-              <Building2 className="text-blue-400 shrink-0" size={15} />
-              <span>{linkedAccounts.length > 0 ? `${linkedAccounts.length} Linked` : 'Link Accounts'}</span>
+              <Building2 className="text-blue-400 shrink-0" size={14} />
+              <span>{linkedAccounts.length > 0 ? `${linkedAccounts.length} Linked` : 'Accounts'}</span>
             </button>
 
             <button
               onClick={() => setShowSyncModal(true)}
               title="Sync to Phone & Devices"
-              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 active:scale-95 transition-all backdrop-blur-md border border-emerald-500/30 text-xs font-semibold text-emerald-300 shadow-lg cursor-pointer"
+              className="w-full flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 active:scale-95 transition-all backdrop-blur-md border border-emerald-500/30 text-[11px] sm:text-xs font-semibold text-emerald-300 shadow-lg cursor-pointer whitespace-nowrap"
             >
-              <Smartphone className="text-emerald-400 shrink-0" size={15} />
-              <span>Sync Phone</span>
+              <Smartphone className="text-emerald-400 shrink-0" size={14} />
+              <span>Sync App</span>
             </button>
 
             <button
@@ -466,9 +466,9 @@ export default function PersonalFinanceTracker() {
                 setIsWindfallModalOpen(true);
               }}
               title="Test Windfall Interceptor Modal (Phase 5)"
-              className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-amber-500/15 hover:bg-amber-500/25 active:scale-95 transition-all backdrop-blur-md border border-amber-500/30 text-xs font-semibold text-amber-300 shadow-lg cursor-pointer"
+              className="w-full flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-2xl bg-amber-500/15 hover:bg-amber-500/25 active:scale-95 transition-all backdrop-blur-md border border-amber-500/30 text-[11px] sm:text-xs font-semibold text-amber-300 shadow-lg cursor-pointer whitespace-nowrap"
             >
-              <Sparkles className="text-amber-400 shrink-0" size={15} />
+              <Sparkles className="text-amber-400 shrink-0" size={14} />
               <span>Bonus Tool</span>
             </button>
           </div>
@@ -563,14 +563,14 @@ export default function PersonalFinanceTracker() {
           )}
         </div>
 
-        {/* Tab Navigation (iOS Segmented Control Style) */}
-        <div className="flex bg-white/10 backdrop-blur-xl p-1 rounded-2xl border border-white/10 shadow-inner overflow-x-auto no-scrollbar">
+        {/* Tab Navigation (Symmetrical 5-Column iOS Segmented Control) */}
+        <div className="grid grid-cols-5 gap-0.5 bg-white/10 backdrop-blur-xl p-1 rounded-2xl border border-white/10 shadow-inner">
           {[
             { id: 'dashboard', label: 'Overview' },
             { id: 'spending', label: 'Spending' },
-            { id: 'debts', label: 'Debts & Bills' },
+            { id: 'debts', label: 'Debts' },
             { id: 'optimize', label: 'Optimize' },
-            { id: 'wealth', label: 'Invest & Save' },
+            { id: 'wealth', label: 'Invest' },
           ].map((t) => {
             const isTabActive =
               activeTab === t.id ||
@@ -579,7 +579,7 @@ export default function PersonalFinanceTracker() {
               <button
                 key={t.id}
                 onClick={() => setActiveTab(t.id)}
-                className="relative flex-1 py-2 px-2.5 text-xs sm:text-sm font-medium capitalize z-10 whitespace-nowrap text-center cursor-pointer"
+                className="relative w-full py-2 px-1 text-[11px] sm:text-xs font-semibold capitalize z-10 truncate text-center cursor-pointer"
               >
                 {isTabActive && (
                   <motion.div
@@ -711,20 +711,20 @@ export default function PersonalFinanceTracker() {
         </AnimatePresence>
       </div>
 
-      {/* Floating Bottom Quick Action Dock */}
-      <div className="fixed bottom-5 inset-x-0 z-40 flex justify-center items-center pointer-events-none px-4">
+      {/* Floating Bottom Quick Action Dock (Symmetrical Dual-Pill) */}
+      <div className="fixed bottom-[max(0.75rem,env(safe-area-inset-bottom,0.75rem))] inset-x-0 z-40 flex justify-center items-center pointer-events-none px-4">
         <motion.div
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          className="flex items-center gap-2 p-1.5 rounded-full bg-zinc-900/80 backdrop-blur-2xl border border-white/20 shadow-2xl pointer-events-auto"
+          className="grid grid-cols-2 gap-1.5 p-1.5 rounded-full bg-zinc-900/90 backdrop-blur-2xl border border-white/20 shadow-2xl pointer-events-auto w-56"
         >
           {/* Voice Dictation Button */}
           <button
             onClick={() => openAdd(true)}
             aria-label="Dictate expense, income, or debt"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-400 hover:to-indigo-500 text-white font-medium text-sm shadow-lg shadow-blue-500/25 active:scale-95 transition-all"
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-400 hover:to-indigo-500 text-white font-semibold text-xs shadow-lg shadow-blue-500/25 active:scale-95 transition-all cursor-pointer"
           >
-            <Mic size={18} />
+            <Mic size={14} className="shrink-0" />
             <span>Dictate</span>
           </button>
 
@@ -732,9 +732,10 @@ export default function PersonalFinanceTracker() {
           <button
             onClick={() => openAdd(false)}
             aria-label="Add new entry"
-            className="h-10 w-10 rounded-full bg-white text-black hover:bg-gray-100 flex items-center justify-center shadow-lg active:scale-95 transition-all"
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-full bg-white text-black hover:bg-gray-100 font-semibold text-xs shadow-lg active:scale-95 transition-all cursor-pointer"
           >
-            <Plus size={20} />
+            <Plus size={14} className="shrink-0" />
+            <span>Add Entry</span>
           </button>
         </motion.div>
       </div>
@@ -897,24 +898,24 @@ function DashboardTab({
               </span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="grid grid-cols-2 gap-2 w-full sm:w-auto">
             <button
               type="button"
               onClick={onOpenLink}
-              className="px-3.5 py-2 rounded-xl bg-zinc-800/90 hover:bg-zinc-700 text-xs font-semibold text-zinc-200 border border-zinc-700 transition-colors cursor-pointer flex items-center gap-1.5"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-800/90 hover:bg-zinc-700 text-xs font-semibold text-zinc-200 border border-zinc-700 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
             >
-              <Building2 size={14} className="text-blue-400" />
+              <Building2 size={14} className="text-blue-400 shrink-0" />
               <span>Accounts ({linkedAccounts.length})</span>
             </button>
             {onOpenSync && (
               <button
                 type="button"
                 onClick={onOpenSync}
-                className="px-3.5 py-2 rounded-xl bg-zinc-800/90 hover:bg-zinc-700 text-xs font-semibold text-zinc-300 border border-zinc-700 transition-colors cursor-pointer flex items-center gap-1.5"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-800/90 hover:bg-zinc-700 text-xs font-semibold text-zinc-300 border border-zinc-700 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                 title="Sync to Phone"
               >
-                <Smartphone size={13} className="text-emerald-400" />
-                <span>Sync</span>
+                <Smartphone size={13} className="text-emerald-400 shrink-0" />
+                <span>Sync App</span>
               </button>
             )}
           </div>
@@ -1224,34 +1225,34 @@ function DashboardTab({
         </div>
       )}
 
-      {/* 4. Friendly Quick Action Bar */}
-      <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+      {/* 4. Symmetrical 3-Column Quick Action Bar */}
+      <div className="grid grid-cols-3 gap-2 pt-2">
         {onAdd && (
           <button
             type="button"
             onClick={onAdd}
-            className="px-4 py-2.5 rounded-2xl bg-white text-black hover:bg-zinc-200 text-xs font-bold flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+            className="w-full px-2 py-2.5 rounded-2xl bg-white text-black hover:bg-zinc-200 text-[11px] sm:text-xs font-bold flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer whitespace-nowrap"
           >
-            <Plus size={14} />
-            <span>Log an Expense</span>
+            <Plus size={14} className="shrink-0" />
+            <span>Log Expense</span>
           </button>
         )}
         <button
           type="button"
           onClick={onOpenLink}
-          className="px-4 py-2.5 rounded-2xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold flex items-center gap-1.5 border border-zinc-700 active:scale-95 transition-all cursor-pointer"
+          className="w-full px-2 py-2.5 rounded-2xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1.5 border border-zinc-700 active:scale-95 transition-all cursor-pointer whitespace-nowrap"
         >
-          <Building2 size={14} className="text-blue-400" />
-          <span>Linked Accounts</span>
+          <Building2 size={14} className="text-blue-400 shrink-0" />
+          <span>Accounts</span>
         </button>
         {onOpenSync && (
           <button
             type="button"
             onClick={onOpenSync}
-            className="px-4 py-2.5 rounded-2xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold flex items-center gap-1.5 border border-zinc-700 active:scale-95 transition-all cursor-pointer"
+            className="w-full px-2 py-2.5 rounded-2xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1.5 border border-zinc-700 active:scale-95 transition-all cursor-pointer whitespace-nowrap"
           >
-            <Smartphone size={14} className="text-emerald-400" />
-            <span>Sync to Phone</span>
+            <Smartphone size={14} className="text-emerald-400 shrink-0" />
+            <span>Sync App</span>
           </button>
         )}
       </div>
@@ -1475,36 +1476,36 @@ function SubscriptionsAndDebtTab({
           </button>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-          <div className="p-2.5 bg-black/40 rounded-xl border border-white/5">
-            <span className="text-gray-400 block text-[10px]">Subscriptions & Bills</span>
+        <div className="grid grid-cols-3 gap-2 text-xs">
+          <div className="p-2.5 bg-black/40 rounded-xl border border-white/5 text-center">
+            <span className="text-gray-400 block text-[10px] truncate">Bills & Subs</span>
             <span className="font-bold text-white">{formatMoney(totalSubscriptionsAmount)}</span>
           </div>
-          <div className="p-2.5 bg-black/40 rounded-xl border border-white/5">
-            <span className="text-gray-400 block text-[10px]">Debt Payments</span>
+          <div className="p-2.5 bg-black/40 rounded-xl border border-white/5 text-center">
+            <span className="text-gray-400 block text-[10px] truncate">Debt Pmts</span>
             <span className="font-bold text-rose-300">{formatMoney(monthlyDebtTotal)}</span>
           </div>
-          <div className="p-2.5 bg-black/40 rounded-xl border border-white/5 col-span-2 sm:col-span-1">
-            <span className="text-gray-400 block text-[10px]">Card Balance Owed</span>
+          <div className="p-2.5 bg-black/40 rounded-xl border border-white/5 text-center">
+            <span className="text-gray-400 block text-[10px] truncate">Card Balance</span>
             <span className="font-bold text-amber-300">{formatMoney(totalCreditBalance)}</span>
           </div>
         </div>
       </div>
 
-      {/* Segmented Filter Pills */}
-      <div className="flex bg-white/5 p-1 rounded-2xl border border-white/10 text-xs">
+      {/* Symmetrical 3-Column Segmented Filter Pills */}
+      <div className="grid grid-cols-3 gap-1 bg-white/5 p-1 rounded-2xl border border-white/10 text-[11px] sm:text-xs">
         {[
-          { id: 'all', label: 'All Commitments' },
-          { id: 'subscriptions', label: `Subscriptions (${allSubscriptions.length})` },
+          { id: 'all', label: 'All Items' },
+          { id: 'subscriptions', label: `Bills (${allSubscriptions.length})` },
           {
             id: 'debts',
-            label: `Debts & Loans (${debts.length + (totalCreditBalance > 0 ? 1 : 0) + (distinctAutoLoans.length > 0 && debts.length === 0 ? distinctAutoLoans.length : 0)})`,
+            label: `Debts (${debts.length + (totalCreditBalance > 0 ? 1 : 0) + (distinctAutoLoans.length > 0 && debts.length === 0 ? distinctAutoLoans.length : 0)})`,
           },
         ].map((f) => (
           <button
             key={f.id}
             onClick={() => setActiveFilter(f.id)}
-            className={`flex-1 py-1.5 px-2 rounded-xl font-medium transition-all ${
+            className={`w-full py-2 px-1 rounded-xl font-medium transition-all text-center truncate cursor-pointer ${
               activeFilter === f.id
                 ? 'bg-white/20 text-white font-semibold shadow-sm'
                 : 'text-gray-400 hover:text-white'
@@ -2556,71 +2557,82 @@ function OptimizationTab({
 
   return (
     <div className="space-y-5">
-      {/* View Switcher: Interactive Simulators vs Behavioral Engine vs Spending Trim */}
-      <div className="flex bg-zinc-900/90 backdrop-blur-xl p-1.5 rounded-2xl border border-zinc-800 shadow-xl overflow-x-auto no-scrollbar">
+      {/* View Switcher: Symmetrical 3-Column Segmented Control */}
+      <div className="grid grid-cols-3 gap-1 bg-zinc-900/90 backdrop-blur-xl p-1 rounded-2xl border border-zinc-800 shadow-xl">
         <button
           type="button"
           onClick={() => setSubTab('simulators')}
-          className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+          className={`w-full py-2 px-1.5 rounded-xl text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer truncate ${
             subTab === 'simulators'
               ? 'bg-gradient-to-r from-amber-500 to-indigo-600 text-white shadow-lg'
               : 'text-zinc-400 hover:text-white'
           }`}
         >
-          <Sparkles size={14} className="text-yellow-300" />
-          <span>Interactive Simulators</span>
+          <Sparkles size={13} className="text-yellow-300 shrink-0" />
+          <span>Simulators</span>
         </button>
         <button
           type="button"
           onClick={() => setSubTab('behavioral')}
-          className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+          className={`w-full py-2 px-1.5 rounded-xl text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer truncate ${
             subTab === 'behavioral'
               ? 'bg-gradient-to-r from-emerald-500 to-indigo-600 text-white shadow-lg'
               : 'text-zinc-400 hover:text-white'
           }`}
         >
-          <Layers size={14} />
-          <span>Behavioral Engine</span>
+          <Layers size={13} className="shrink-0" />
+          <span>Behavioral</span>
         </button>
         <button
           type="button"
           onClick={() => setSubTab('budget_caps')}
-          className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+          className={`w-full py-2 px-1.5 rounded-xl text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer truncate ${
             subTab === 'budget_caps'
               ? 'bg-white text-black shadow-lg'
               : 'text-zinc-400 hover:text-white'
           }`}
         >
-          <Target size={14} />
-          <span>Trim & Budget Caps</span>
+          <Target size={13} className="shrink-0" />
+          <span>Budget Caps</span>
         </button>
       </div>
 
       {subTab === 'simulators' ? (
         <div className="space-y-4">
-          {/* Tool Picker Selector (Apple Health Style) */}
-          <div className="flex bg-zinc-950/70 p-1 rounded-2xl border border-zinc-800 gap-1 overflow-x-auto no-scrollbar">
+          {/* Tool Picker Selector (Symmetrical 2x2 Grid + Full-Width Toggle) */}
+          <div className="grid grid-cols-2 gap-1.5 bg-zinc-950/70 p-1.5 rounded-2xl border border-zinc-800">
             {[
-              { id: 'cushion', label: 'Move Cushion ($3k)', icon: <Compass size={13} className="text-cyan-400" /> },
-              { id: 'waterfall', label: 'Cash Flow Waterfall', icon: <Layers size={13} className="text-teal-400" /> },
-              { id: 'car', label: 'Car Payoff', icon: <Car size={13} className="text-amber-400" /> },
-              { id: 'tax', label: '401(k) Tax Shield', icon: <Sparkles size={13} className="text-yellow-400" /> },
-              { id: 'all', label: 'Show All Tools', icon: <Plus size={13} className="text-zinc-400" /> },
+              { id: 'cushion', label: 'Move Cushion ($3k)', icon: <Compass size={13} className="text-cyan-400 shrink-0" /> },
+              { id: 'waterfall', label: 'Cash Flow Map', icon: <Layers size={13} className="text-teal-400 shrink-0" /> },
+              { id: 'car', label: 'Car Loan Payoff', icon: <Car size={13} className="text-amber-400 shrink-0" /> },
+              { id: 'tax', label: '401(k) Tax Shield', icon: <Sparkles size={13} className="text-yellow-400 shrink-0" /> },
             ].map((tool) => (
               <button
                 key={tool.id}
                 type="button"
                 onClick={() => setActiveSimTool(tool.id)}
-                className={`py-1.5 px-3 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer whitespace-nowrap transition-all ${
+                className={`w-full py-2 px-2 rounded-xl text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer truncate transition-all ${
                   activeSimTool === tool.id
-                    ? 'bg-zinc-800 text-white shadow-sm'
+                    ? 'bg-zinc-800 text-white shadow-sm border border-zinc-700'
                     : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
                 {tool.icon}
-                <span>{tool.label}</span>
+                <span className="truncate">{tool.label}</span>
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => setActiveSimTool(activeSimTool === 'all' ? 'cushion' : 'all')}
+              className={`col-span-2 w-full py-1.5 px-2 rounded-xl text-[11px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                activeSimTool === 'all'
+                  ? 'bg-zinc-800 text-white shadow-sm border border-zinc-700'
+                  : 'text-zinc-400 hover:text-zinc-200 bg-zinc-900/50'
+              }`}
+            >
+              <Plus size={12} className="text-zinc-400 shrink-0" />
+              <span>{activeSimTool === 'all' ? 'Showing All 4 Tools' : 'Show All 4 Tools at Once'}</span>
+            </button>
           </div>
 
           {/* 1. Relocation Goal Widget (Phase 1 Priority • $3,000 Cap) */}

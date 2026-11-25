@@ -39,11 +39,11 @@ function calculateFinancialScore({
     return {
       score: 0,
       level: 0,
-      levelName: 'No Accounts Linked',
+      levelName: 'Unlinked',
       levelIcon: '🔒',
       badgeColor: 'bg-zinc-800 text-zinc-400 border-zinc-700',
       nextLevelTarget: 25,
-      summaryTagline: 'Link your accounts in Accounts to calculate your real Financial Health Score.',
+      summaryTagline: 'Link your accounts to calculate your real Financial Health Score.',
       pillars: {
         cash: { score: 0, max: 30, label: 'Cash Cushion' },
         debt: { score: 0, max: 25, label: 'Debt Control' },
@@ -157,8 +157,8 @@ export default function FinancialHealthScore({
   const stats = calculateFinancialScore(data);
 
   // SVG Circular progress constants
-  const size = 110;
-  const strokeWidth = 10;
+  const size = 96;
+  const strokeWidth = 9;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (stats.score / 100) * circumference;
@@ -192,9 +192,9 @@ export default function FinancialHealthScore({
     <>
       {/* Gamified Hero Score Banner (Apple Health / Activity Ring Style) */}
       <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-zinc-900/95 via-zinc-900/80 to-zinc-950/95 border border-zinc-800 shadow-2xl backdrop-blur-2xl">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           {/* Left: Score Gauge Ring + Level Title */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3.5">
             <div className="relative shrink-0 flex items-center justify-center">
               <svg width={size} height={size} className="transform -rotate-90">
                 {/* Background Track */}
@@ -231,7 +231,7 @@ export default function FinancialHealthScore({
 
               {/* Inner Score Number */}
               <div className="absolute flex flex-col items-center justify-center text-center">
-                <span className="text-2xl font-black text-white tracking-tight">
+                <span className="text-xl font-black text-white tracking-tight">
                   {stats.score}
                 </span>
                 <span className="text-[9px] font-bold uppercase tracking-wider text-zinc-400">
@@ -241,27 +241,27 @@ export default function FinancialHealthScore({
             </div>
 
             {/* Level Information */}
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full border ${stats.badgeColor} flex items-center gap-1`}>
+            <div className="space-y-1 min-w-0">
+              <div className="flex items-center">
+                <span className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full border ${stats.badgeColor} inline-flex items-center gap-1 whitespace-nowrap`}>
                   <span>{stats.levelIcon}</span>
                   <span>Level {stats.level} • {stats.levelName}</span>
                 </span>
               </div>
-              <h3 className="text-lg sm:text-xl font-black text-white tracking-tight flex items-center gap-1.5">
+              <h3 className="text-base sm:text-xl font-black text-white tracking-tight">
                 Financial Health Score
               </h3>
-              <p className="text-xs text-zinc-400 leading-relaxed max-w-sm">
+              <p className="text-[11px] sm:text-xs text-zinc-400 leading-snug max-w-sm">
                 {stats.summaryTagline}
               </p>
             </div>
           </div>
 
           {/* Right: Quick Breakdown & Detail Button */}
-          <div className="flex flex-col sm:items-end justify-between gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-800">
-            <div className="flex items-center gap-2 sm:justify-end">
+          <div className="flex flex-col sm:items-end justify-between gap-2.5 pt-3 sm:pt-0 border-t sm:border-t-0 border-zinc-800/80">
+            <div className="flex items-center justify-between sm:justify-end">
               <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-400">
-                <Flame size={14} className="text-orange-400" />
+                <Flame size={13} className="text-orange-400 shrink-0" />
                 <span>Next Rank: Level {Math.min(5, stats.level + 1)} at {stats.nextLevelTarget} pts</span>
               </div>
             </div>
@@ -269,11 +269,11 @@ export default function FinancialHealthScore({
             <button
               type="button"
               onClick={() => setShowDetailModal(true)}
-              className="px-4 py-2 rounded-2xl bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-bold transition-all border border-zinc-700 cursor-pointer flex items-center justify-center gap-1.5 group shadow-sm"
+              className="w-full sm:w-auto px-4 py-2.5 rounded-2xl bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-bold transition-all border border-zinc-700 cursor-pointer flex items-center justify-center gap-1.5 group shadow-sm"
             >
-              <Trophy size={14} className="text-yellow-400 group-hover:scale-110 transition-transform" />
+              <Trophy size={14} className="text-yellow-400 group-hover:scale-110 transition-transform shrink-0" />
               <span>View Score & Quests</span>
-              <ChevronRight size={13} className="text-zinc-400 group-hover:translate-x-0.5 transition-transform" />
+              <ChevronRight size={13} className="text-zinc-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
             </button>
           </div>
         </div>
