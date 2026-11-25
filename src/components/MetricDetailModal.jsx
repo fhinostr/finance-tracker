@@ -366,7 +366,7 @@ export default function MetricDetailModal({
                             <span className="text-[10px] text-zinc-500 capitalize">{acc.subtype || acc.type} ••••{acc.mask || '••••'}</span>
                           </div>
                           <span className="font-mono font-bold text-white">
-                            {formatMoney(acc.balanceCurrent ?? acc.balanceAvailable ?? 0)}
+                            {formatMoney(acc.balance ?? acc.balanceCurrent ?? acc.balanceAvailable ?? 0)}
                           </span>
                         </div>
                       ))}
@@ -400,7 +400,7 @@ export default function MetricDetailModal({
                           className="p-2.5 rounded-xl bg-zinc-950 border border-zinc-800/80 flex items-center justify-between text-xs"
                         >
                           <div>
-                            <span className="font-semibold text-white block">{entry.description || entry.category}</span>
+                            <span className="font-semibold text-white block">{entry.name || entry.description || entry.category}</span>
                             <span className="text-[10px] text-zinc-500">{entry.date || 'Today'}</span>
                           </div>
                           <span className="font-mono font-bold text-orange-400">
@@ -459,7 +459,7 @@ export default function MetricDetailModal({
                             <span className="text-[10px] text-zinc-500">Credit Card ••••{c.mask || '••••'}</span>
                           </div>
                           <span className="font-mono font-bold text-red-400">
-                            -{formatMoney(c.balanceCurrent || 0)}
+                            -{formatMoney(c.balance ?? c.balanceCurrent ?? 0)}
                           </span>
                         </div>
                       ))}
@@ -488,7 +488,7 @@ export default function MetricDetailModal({
                             <span className="text-[10px] text-zinc-500 capitalize">{acc.subtype || 'Portfolio'}</span>
                           </div>
                           <span className="font-mono font-bold text-emerald-400">
-                            {formatMoney(acc.balanceCurrent || 0)}
+                            {formatMoney(acc.balance ?? acc.balanceCurrent ?? 0)}
                           </span>
                         </div>
                       ))}

@@ -805,6 +805,7 @@ function DashboardTab({
   const {
     bankAccounts,
     creditAccounts,
+    investmentAccounts,
     totalCashInBank,
     totalCreditBalance,
     totalPortfolioValue,
@@ -827,7 +828,7 @@ function DashboardTab({
       const mapping = getGoalAccountMapping();
       if (mapping?.relocationAccountId && linkedAccounts?.length > 0) {
         const acc = linkedAccounts.find((a) => a.id === mapping.relocationAccountId);
-        if (acc) return Number(acc.balanceCurrent ?? acc.balanceAvailable ?? 0);
+        if (acc) return Number(acc.balance ?? acc.balanceCurrent ?? acc.balanceAvailable ?? 0);
       }
       // 2. Check if user has an account named savings or subtype savings
       const savingsAcc = linkedAccounts?.find(
@@ -838,10 +839,10 @@ function DashboardTab({
           (a.name || '').toLowerCase().includes('hysa')
       );
       if (savingsAcc) {
-        return Number(savingsAcc.balanceCurrent ?? savingsAcc.balanceAvailable ?? 0);
+        return Number(savingsAcc.balance ?? savingsAcc.balanceCurrent ?? savingsAcc.balanceAvailable ?? 0);
       }
       const saved = localStorage.getItem('relocation_hysa_balance');
-      return saved !== null ? Number(saved) : 0;
+      return saved !== null && linkedAccounts.length > 0 ? Number(saved) : 0;
     } catch {
       return 0;
     }
@@ -1242,9 +1243,7 @@ function DashboardTab({
           totalFixed,
           bankAccounts,
           creditAccounts,
-          investmentAccounts: linkedAccounts.filter(
-            (a) => a.type === 'investment' || a.subtype === 'brokerage' || a.subtype === '401k' || a.subtype === 'ira'
-          ),
+          investmentAccounts,
           debts,
           entries,
           budgets: _budgets || {},

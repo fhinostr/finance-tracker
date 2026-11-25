@@ -99,9 +99,18 @@ export function categorizeAccounts(accounts = []) {
   const investmentAccounts = accounts.filter(isInvestment);
   const bankAccounts = accounts.filter((a) => !isCredit(a) && !isInvestment(a));
 
-  const totalCashInBank = bankAccounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
-  const totalCreditBalance = creditAccounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
-  const totalPortfolioValue = investmentAccounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+  const totalCashInBank = bankAccounts.reduce(
+    (sum, a) => sum + (Number(a.balance ?? a.balanceCurrent ?? a.balanceAvailable) || 0),
+    0,
+  );
+  const totalCreditBalance = creditAccounts.reduce(
+    (sum, a) => sum + (Number(a.balance ?? a.balanceCurrent) || 0),
+    0,
+  );
+  const totalPortfolioValue = investmentAccounts.reduce(
+    (sum, a) => sum + (Number(a.balance ?? a.balanceCurrent) || 0),
+    0,
+  );
 
   return {
     bankAccounts,

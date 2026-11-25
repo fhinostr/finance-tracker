@@ -52,10 +52,12 @@ export default function SpendingTab({
 
   const filteredTransactions = useMemo(() => {
     return rawTransactions.filter((tx) => {
+      const q = searchQuery.toLowerCase();
       const matchesSearch =
         searchQuery === '' ||
-        (tx.description && tx.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (tx.category && tx.category.toLowerCase().includes(searchQuery.toLowerCase()));
+        (tx.name && tx.name.toLowerCase().includes(q)) ||
+        (tx.description && tx.description.toLowerCase().includes(q)) ||
+        (tx.category && tx.category.toLowerCase().includes(q));
 
       const matchesCat =
         selectedCategoryFilter === 'all' || tx.category === selectedCategoryFilter;
@@ -245,8 +247,8 @@ export default function SpendingTab({
             </p>
           ) : (
             filteredTransactions.map((item) => {
-              const isIncome = item.type === 'income';
-              const catStyle = getCategoryStyle(item.category);
+              const isIncome = item.kind === 'income' || item.type === 'income';
+              const catStyle = getCategoryStyle(item.category, item.kind);
 
               return (
                 <div
@@ -258,14 +260,14 @@ export default function SpendingTab({
                       className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 ${
                         isIncome
                           ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                          : `${catStyle.badge} border`
+                          : `${catStyle.bg} ${catStyle.text} ${catStyle.border}`
                       }`}
                     >
                       {isIncome ? <DollarSign size={16} /> : <TrendingDown size={16} />}
                     </div>
                     <div className="min-w-0">
                       <p className="text-xs font-bold text-zinc-200 truncate">
-                        {item.description || formatCategory(item.category)}
+                        {item.name || item.description || formatCategory(item.category)}
                       </p>
                       <div className="flex items-center gap-2 text-[10px] text-zinc-500">
                         <span>{formatCategory(item.category)}</span>
