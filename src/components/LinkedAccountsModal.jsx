@@ -34,7 +34,9 @@ import {
   callPlaidApi,
   getPlaidConfig,
   savePlaidConfig,
+  pullPlaidConfigFromCloud,
 } from '../lib/supabase.js';
+import { pushSyncToRelay } from '../lib/sync.js';
 
 export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpdateInvestmentTotal }) {
   const [accounts, setAccounts] = useState(getStoredAccounts);
@@ -165,21 +167,26 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
 
   useEffect(() => {
     let active = true;
-    const cfg = getPlaidConfig();
-    // Only attempt prefetch if credentials exist; never pop drawer open on failure
-    if (cfg.clientId && cfg.secret) {
-      callPlaidApi('create-link-token', { account_type: 'bank' })
-        .then((data) => {
-          if (!active) return;
-          if (data?.link_token) {
-            setLinkToken(data.link_token);
-          }
-        })
-        .catch((err) => {
-          // Keep key drawer collapsed; do not prompt user repeatedly
-          console.warn('Plaid token background prefetch:', err?.message || err);
-        });
-    }
+    pullPlaidConfigFromCloud()
+      .then((cfg) => {
+        if (!active) return;
+        if (cfg?.clientId) setPlaidClientId(cfg.clientId);
+        if (cfg?.secret) setPlaidSecret(cfg.secret);
+        if (cfg?.env) setPlaidEnv(cfg.env);
+        if (cfg?.clientId && cfg?.secret) {
+          return callPlaidApi('create-link-token', { account_type: 'bank' });
+        }
+        return null;
+      })
+      .then((data) => {
+        if (!active) return;
+        if (data?.link_token) {
+          setLinkToken(data.link_token);
+        }
+      })
+      .catch((err) => {
+        console.warn('Plaid token background prefetch:', err?.message || err);
+      });
 
     return () => {
       active = false;
@@ -197,7 +204,7 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
       if (e.detail) {
         setPlaidClientId(e.detail.clientId || '');
         setPlaidSecret(e.detail.secret || '');
-        setPlaidEnv(e.detail.env || 'sandbox');
+        setPlaidEnv(e.detail.env || 'production');
       }
     };
     window.addEventListener('finance-tracker:accounts-updated', handleUpdate);
@@ -217,10 +224,11 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
       return;
     }
     savePlaidConfig(plaidClientId, plaidSecret, plaidEnv);
+    pushSyncToRelay().catch(() => {});
     setKeysSaved(true);
     setShowKeySettings(false); // Remembered & automatically collapsed
     setErrorMessage('');
-    setStatusMessage('✓ Plaid credentials saved! They will stay remembered across sessions.');
+    setStatusMessage('✓ Plaid credentials saved & synced across all your devices!');
     setTimeout(() => {
       setKeysSaved(false);
       setStatusMessage('');

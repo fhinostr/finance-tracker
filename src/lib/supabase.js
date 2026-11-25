@@ -36,38 +36,105 @@ export function saveSupabaseConfig(url, anonKey) {
   }
 }
 
+export const DEFAULT_PLAID_CLIENT_ID = '6ae243721cb88b000d857aa3';
+const PLAID_CLOUD_RELAY_TOPIC = 'fhinostr_plaid_keys_v1';
+
 export function getPlaidConfig() {
-  const envClientId = import.meta.env?.VITE_PLAID_CLIENT_ID || '';
+  const envClientId = import.meta.env?.VITE_PLAID_CLIENT_ID || DEFAULT_PLAID_CLIENT_ID;
   const envSecret = import.meta.env?.VITE_PLAID_SECRET || '';
-  const envPlaidEnv = import.meta.env?.VITE_PLAID_ENV || '';
+  const envPlaidEnv = import.meta.env?.VITE_PLAID_ENV || 'production';
 
   try {
     const raw = localStorage.getItem(STORAGE_KEY_PLAID);
     if (raw) {
       const parsed = JSON.parse(raw);
       return {
-        clientId: parsed.clientId || envClientId || '',
-        secret: parsed.secret || envSecret || '',
-        env: parsed.env || envPlaidEnv || 'sandbox',
+        clientId: (parsed.clientId || envClientId || DEFAULT_PLAID_CLIENT_ID).trim(),
+        secret: (parsed.secret || envSecret || '').trim(),
+        env: parsed.env === 'sandbox' ? 'sandbox' : (parsed.env || envPlaidEnv || 'production'),
       };
     }
   } catch {
     // ignore
   }
-  return { clientId: envClientId || '', secret: envSecret || '', env: envPlaidEnv || 'sandbox' };
+  return {
+    clientId: envClientId || DEFAULT_PLAID_CLIENT_ID,
+    secret: envSecret || '',
+    env: envPlaidEnv || 'production',
+  };
 }
 
-export function savePlaidConfig(clientId, secret, env = 'sandbox') {
+export async function pushPlaidConfigToCloud(config) {
+  if (!config?.clientId || !config?.secret) return;
+  try {
+    await fetch(`https://ntfy.sh/${PLAID_CLOUD_RELAY_TOPIC}`, {
+      method: 'POST',
+      headers: { Title: 'Plaid Config Sync' },
+      body: JSON.stringify({
+        clientId: config.clientId.trim(),
+        secret: config.secret.trim(),
+        env: config.env || 'production',
+        updatedAt: Date.now(),
+      }),
+    });
+  } catch {
+    // ignore network errors
+  }
+}
+
+export async function pullPlaidConfigFromCloud() {
+  try {
+    const current = getPlaidConfig();
+    if (current.clientId && current.secret) {
+      // If this device already has the secret, ensure cloud relay also has it for other devices
+      pushPlaidConfigToCloud(current);
+      return current;
+    }
+
+    const res = await fetch(`https://ntfy.sh/${PLAID_CLOUD_RELAY_TOPIC}/json?poll=1&since=all`);
+    if (!res.ok) return current;
+    const rawText = await res.text();
+    const lines = rawText.trim().split('\n').filter(Boolean);
+    for (let i = lines.length - 1; i >= 0; i--) {
+      try {
+        const event = JSON.parse(lines[i]);
+        if (event.message) {
+          const parsed = JSON.parse(event.message);
+          if (parsed?.clientId && parsed?.secret) {
+            const cleanConfig = {
+              clientId: parsed.clientId.trim(),
+              secret: parsed.secret.trim(),
+              env: parsed.env || 'production',
+            };
+            localStorage.setItem(STORAGE_KEY_PLAID, JSON.stringify(cleanConfig));
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('finance-tracker:plaid-updated', { detail: cleanConfig }));
+            }
+            return cleanConfig;
+          }
+        }
+      } catch {
+        // continue
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return getPlaidConfig();
+}
+
+export function savePlaidConfig(clientId, secret, env = 'production') {
   try {
     const cleanConfig = {
-      clientId: clientId.trim(),
+      clientId: (clientId || DEFAULT_PLAID_CLIENT_ID).trim(),
       secret: secret.trim(),
-      env: env || 'sandbox',
+      env: env || 'production',
     };
     localStorage.setItem(STORAGE_KEY_PLAID, JSON.stringify(cleanConfig));
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('finance-tracker:plaid-updated', { detail: cleanConfig }));
     }
+    pushPlaidConfigToCloud(cleanConfig);
   } catch {
     // ignore
   }

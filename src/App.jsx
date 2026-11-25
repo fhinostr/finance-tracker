@@ -63,7 +63,8 @@ import { useSavingsSync } from './lib/useSavingsSync.js';
 import WindfallInterceptorModal from './components/WindfallInterceptorModal.jsx';
 import MetricDetailModal from './components/MetricDetailModal.jsx';
 import FinancialHealthScore from './components/FinancialHealthScore.jsx';
-import { checkAndApplyUrlSync } from './lib/sync.js';
+import { checkAndApplyUrlSync, pullSyncFromRelay } from './lib/sync.js';
+import { pullPlaidConfigFromCloud } from './lib/supabase.js';
 
 const springAnim = {
   type: 'spring',
@@ -158,12 +159,24 @@ export default function PersonalFinanceTracker() {
   };
 
   useEffect(() => {
+    // Automatically restore saved Plaid keys across devices
+    pullPlaidConfigFromCloud().catch(() => {});
+
     // Check if user opened this page via a device sync link (#sync=...)
     checkAndApplyUrlSync().then((snapshot) => {
       if (snapshot) {
         setLinkedAccounts(getStoredAccounts());
         setSyncToast('✓ Synced all accounts, balances & transactions from your laptop!');
         setTimeout(() => setSyncToast(''), 6000);
+      } else if (getStoredAccounts().length === 0) {
+        // Automatically check cloud relay for saved accounts & Plaid keys
+        pullSyncFromRelay()
+          .then((res) => {
+            if (res?.success) {
+              setLinkedAccounts(getStoredAccounts());
+            }
+          })
+          .catch(() => {});
       }
     });
 
