@@ -18,18 +18,32 @@ import { formatMoney } from '../lib/store.js';
  * 3. Living Below Means / Surplus (up to 25 pts)
  * 4. Future Wealth & Investments (up to 20 pts)
  */
-function calculateFinancialScore({
-  totalCashInBank = 0,
-  totalCreditBalance = 0,
-  totalUserDebts = 0,
-  totalDebts = 0,
-  totalPortfolioValue = 0,
-  totalVariable = 0,
-  actualNetIncome = 0,
-  relocationSaved = 0,
-  debts = [],
-  linkedAccountsCount = 0,
-}) {
+function calculateFinancialScore(
+  {
+    totalCashInBank = 0,
+    totalCreditBalance = 0,
+    totalUserDebts = 0,
+    totalDebts = 0,
+    totalPortfolioValue = 0,
+    totalVariable = 0,
+    actualNetIncome = 0,
+    relocationSaved = 0,
+    debts = [],
+    linkedAccountsCount = 0,
+  },
+  gameProfile,
+) {
+  const weights = {
+    cash: gameProfile?.pillarWeights?.cash ?? 30,
+    debt: gameProfile?.pillarWeights?.debt ?? 25,
+    surplus: gameProfile?.pillarWeights?.surplus ?? 25,
+    invest: gameProfile?.pillarWeights?.invest ?? 20,
+  };
+  const cashGoalTarget = Math.max(500, Number(gameProfile?.primaryGoalTarget) || 3000);
+  const investGoalTarget = Math.max(500, Number(gameProfile?.investBucketTarget) || 5000);
+  const spendCap = Number(gameProfile?.monthlySpendCap) || 0;
+  const cashLabel = gameProfile?.isCustomized ? 'Goal Cushion' : 'Cash Cushion';
+
   const resolvedDebts = totalDebts || (totalCreditBalance + totalUserDebts);
   const totalAssets = totalCashInBank + totalPortfolioValue;
   const hasAnyData =
@@ -50,63 +64,72 @@ function calculateFinancialScore({
       levelIcon: '🔒',
       badgeColor: 'bg-zinc-800 text-zinc-400 border-zinc-700',
       nextLevelTarget: 25,
-      summaryTagline: 'Link your accounts to calculate your real Financial Health Score.',
+      summaryTagline: gameProfile?.isCustomized
+        ? `Tuned for ${gameProfile.focusLabel}! Link accounts to track real progress.`
+        : 'Link your accounts to calculate your real Financial Health Score.',
       pillars: {
-        cash: { score: 0, max: 30, label: 'Cash Cushion' },
-        debt: { score: 0, max: 25, label: 'Debt Control' },
-        surplus: { score: 0, max: 25, label: 'Spending Control' },
-        invest: { score: 0, max: 20, label: 'Wealth Growth' },
+        cash: { score: 0, max: weights.cash, label: cashLabel },
+        debt: { score: 0, max: weights.debt, label: 'Debt Control' },
+        surplus: { score: 0, max: weights.surplus, label: 'Spending Control' },
+        invest: { score: 0, max: weights.invest, label: 'Wealth Growth' },
       },
     };
   }
 
-  // 1. Cash Cushion (Max 30 pts)
+  // 1. Cash Cushion (Dynamic Max pts based on user's goal profile)
   let cashScore = 0;
   const realCash = Math.max(totalCashInBank, relocationSaved);
-  if (realCash >= 3000) {
-    cashScore = 30;
+  if (realCash >= cashGoalTarget) {
+    cashScore = weights.cash;
   } else if (realCash > 0) {
-    cashScore = Math.min(30, Math.round((realCash / 3000) * 30));
+    cashScore = Math.min(weights.cash, Math.round((realCash / cashGoalTarget) * weights.cash));
   }
 
-  // 2. Debt Control (Max 25 pts) — evaluates toxic credit cards & overall debt vs. cash+investments
+  // 2. Debt Control (Dynamic Max pts) — evaluates toxic credit cards & overall debt vs. cash+investments
   let debtScore = 0;
   if (linkedAccountsCount > 0 || debts.length > 0 || resolvedDebts > 0) {
     if (resolvedDebts === 0) {
-      debtScore = 25;
+      debtScore = weights.debt;
     } else {
-      // Credit card debt is high-interest (heavier penalty); installment loans weighed against total assets
-      const creditPenalty = Math.min(18, (totalCreditBalance / 500) * 4);
+      const scale = weights.debt / 25;
+      const creditPenalty = Math.min(18 * scale, (totalCreditBalance / 500) * 4 * scale);
       const loanDebt = Math.max(0, resolvedDebts - totalCreditBalance);
       const assetCoveragePenalty =
         loanDebt === 0
           ? 0
           : totalAssets >= loanDebt * 1.5
-          ? 3
+          ? 3 * scale
           : totalAssets >= loanDebt
-          ? 6
-          : Math.min(12, Math.round((loanDebt / Math.max(totalAssets, 2000)) * 6));
-      debtScore = Math.max(0, Math.round(25 - creditPenalty - assetCoveragePenalty));
+          ? 6 * scale
+          : Math.min(12 * scale, ((loanDebt / Math.max(totalAssets, 2000)) * 6) * scale);
+      debtScore = Math.max(0, Math.round(weights.debt - creditPenalty - assetCoveragePenalty));
     }
   }
 
-  // 3. Living Below Means (Max 25 pts)
+  // 3. Living Below Means / Spending Cap (Dynamic Max pts)
   let surplusScore = 0;
-  if (actualNetIncome > 0) {
+  if (spendCap > 0 && (totalVariable > 0 || linkedAccountsCount > 0)) {
+    if (totalVariable <= spendCap) {
+      surplusScore = weights.surplus;
+    } else {
+      const overRatio = Math.max(0, (totalVariable - spendCap) / spendCap);
+      surplusScore = Math.max(0, Math.round(weights.surplus * (1 - overRatio)));
+    }
+  } else if (actualNetIncome > 0) {
     const surplus = actualNetIncome - totalVariable;
     if (surplus >= actualNetIncome * 0.2) {
-      surplusScore = 25;
+      surplusScore = weights.surplus;
     } else if (surplus > 0) {
-      surplusScore = Math.min(25, Math.round((surplus / actualNetIncome) * 25));
+      surplusScore = Math.min(weights.surplus, Math.round((surplus / actualNetIncome) * weights.surplus));
     }
   }
 
-  // 4. Future Investments (Max 20 pts)
+  // 4. Future Investments (Dynamic Max pts)
   let investScore = 0;
-  if (totalPortfolioValue >= 5000) {
-    investScore = 20;
+  if (totalPortfolioValue >= investGoalTarget) {
+    investScore = weights.invest;
   } else if (totalPortfolioValue > 0) {
-    investScore = Math.min(20, Math.round((totalPortfolioValue / 5000) * 20));
+    investScore = Math.min(weights.invest, Math.round((totalPortfolioValue / investGoalTarget) * weights.invest));
   }
 
   const totalScore = Math.min(100, Math.max(0, cashScore + debtScore + surplusScore + investScore));
@@ -158,21 +181,22 @@ function calculateFinancialScore({
     nextLevelTarget,
     summaryTagline,
     pillars: {
-      cash: { score: cashScore, max: 30, label: 'Cash Cushion' },
-      debt: { score: debtScore, max: 25, label: 'Debt Control' },
-      surplus: { score: surplusScore, max: 25, label: 'Spending Control' },
-      invest: { score: investScore, max: 20, label: 'Wealth Growth' },
+      cash: { score: cashScore, max: weights.cash, label: cashLabel },
+      debt: { score: debtScore, max: weights.debt, label: 'Debt Control' },
+      surplus: { score: surplusScore, max: weights.surplus, label: 'Spending Control' },
+      invest: { score: investScore, max: weights.invest, label: 'Wealth Growth' },
     },
   };
 }
 
 export default function FinancialHealthScore({
   data = {},
+  gameProfile,
   onOpenMetricModal,
 }) {
   const [showDetailModal, setShowDetailModal] = useState(false);
 
-  const stats = calculateFinancialScore(data);
+  const stats = calculateFinancialScore(data, gameProfile);
 
   // SVG Circular progress constants
   const size = 96;
@@ -181,7 +205,13 @@ export default function FinancialHealthScore({
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (stats.score / 100) * circumference;
 
-  // Gamified Power-Up Quests strictly reflecting real account & goal status
+  const goalName = gameProfile?.primaryGoalName || 'Move Cushion';
+  const goalTarget = Math.max(500, Number(gameProfile?.primaryGoalTarget) || 3000);
+  const firstCashMilestone = Math.min(goalTarget, Math.max(500, Math.round(goalTarget * 0.25)));
+  const investQuestTarget = Math.max(1000, Math.round((Number(gameProfile?.investBucketTarget) || 5000) * 0.25));
+  const realCashForQuest = Math.max(data.totalCashInBank || 0, data.relocationSaved || 0);
+
+  // Gamified Power-Up Quests dynamically reflecting the user's personal objectives
   const quests = [
     {
       id: 'link_account',
@@ -191,24 +221,32 @@ export default function FinancialHealthScore({
       actionMetric: 'cash',
     },
     {
-      id: 'cushion_500',
-      title: 'Save First $500 in Move Cushion',
-      reward: '+20 XP',
-      completed: (data.relocationSaved || 0) >= 500 && (data.relocationSaved || 0) > 0,
+      id: 'cushion_milestone',
+      title: `Save ${formatMoney(firstCashMilestone)} Toward ${goalName}`,
+      reward: '+25 XP',
+      completed: realCashForQuest >= firstCashMilestone && realCashForQuest > 0,
       actionMetric: 'goal_cushion',
     },
-    {
-      id: 'zero_credit',
-      title: 'Keep Credit Card Debt at $0',
-      reward: '+25 XP',
-      completed: (data.linkedAccountsCount || 0) > 0 && (data.totalCreditBalance || 0) === 0,
-      actionMetric: 'debts',
-    },
+    gameProfile?.monthlySpendCap > 0
+      ? {
+          id: 'spend_cap',
+          title: `Keep Monthly Spending Under ${formatMoney(gameProfile.monthlySpendCap)}`,
+          reward: '+25 XP',
+          completed: (data.linkedAccountsCount || 0) > 0 && (data.totalVariable || 0) <= gameProfile.monthlySpendCap,
+          actionMetric: 'spending',
+        }
+      : {
+          id: 'zero_credit',
+          title: 'Keep Credit Card Debt at $0',
+          reward: '+25 XP',
+          completed: (data.linkedAccountsCount || 0) > 0 && (data.totalCreditBalance || 0) === 0,
+          actionMetric: 'debts',
+        },
     {
       id: 'grow_investments',
-      title: 'Grow Investments Above $1,000',
+      title: `Grow Investments Above ${formatMoney(investQuestTarget)}`,
       reward: '+20 XP',
-      completed: (data.totalPortfolioValue || 0) >= 1000,
+      completed: (data.totalPortfolioValue || 0) >= investQuestTarget,
       actionMetric: 'investments',
     },
   ];
@@ -281,7 +319,9 @@ export default function FinancialHealthScore({
                 </span>
               </div>
               <h3 className="text-base sm:text-xl font-black text-white tracking-tight">
-                Financial Health Score
+                {gameProfile?.playerName
+                  ? `${gameProfile.playerName}'s Financial Score`
+                  : 'Financial Health Score'}
               </h3>
               <p className="text-[11px] sm:text-xs text-zinc-400 leading-snug max-w-sm">
                 {stats.summaryTagline}

@@ -18,13 +18,43 @@ function formatCompactMoney(val = 0) {
 }
 
 function formatGoalShort(target = 1000) {
-  if (target >= 1000000) return `$${target / 1000000}M`;
-  if (target >= 1000) return `$${target / 1000}k`;
+  if (target >= 1000000) {
+    const m = target / 1000000;
+    return `$${Number.isInteger(m) ? m : m.toFixed(1)}M`;
+  }
+  if (target >= 1000) {
+    const k = target / 1000;
+    return `$${Number.isInteger(k) ? k : k.toFixed(1)}k`;
+  }
   return `$${target}`;
 }
 
-function getTierProgress(amount = 0, milestones = [1000, 3000, 10000, 25000, 50000, 100000]) {
+function buildGoalMilestones(customTarget, defaults) {
+  const base = Number(customTarget) || 0;
+  if (base <= 0) return defaults;
+  const steps = [
+    Math.max(500, Math.round(base * 0.25)),
+    Math.max(1000, Math.round(base * 0.5)),
+    base,
+    base * 2,
+    base * 5,
+  ];
+  return Array.from(new Set(steps)).sort((a, b) => a - b);
+}
+
+function getTierProgress(amount = 0, milestones = [1000, 3000, 10000, 25000, 50000, 100000], customTarget = 0) {
   const clean = Math.max(0, Number(amount) || 0);
+  if (customTarget > 0 && clean <= customTarget) {
+    const exactPct = clean >= customTarget ? 100 : Math.round((clean / customTarget) * 100);
+    const visualFillPct = clean <= 0 ? 0 : Math.min(100, Math.max(10, exactPct));
+    const level = exactPct >= 75 ? 3 : exactPct >= 35 ? 2 : 1;
+    return {
+      level,
+      target: customTarget,
+      exactPct,
+      visualFillPct,
+    };
+  }
   let idx = milestones.findIndex((m) => clean < m);
   if (idx === -1) idx = milestones.length - 1;
   const target = milestones[idx];
@@ -39,11 +69,12 @@ function getTierProgress(amount = 0, milestones = [1000, 3000, 10000, 25000, 500
   };
 }
 
-function getNetWorthMilestone(netWorth = 0, hasAnyData = false) {
+function getNetWorthMilestone(netWorth = 0, hasAnyData = false, customNetWorthTarget = 0) {
   if (!hasAnyData && netWorth === 0) {
+    const goalLabel = customNetWorthTarget > 0 ? formatGoalShort(customNetWorthTarget) : '$1k';
     return {
-      label: 'Milestone: First $1k',
-      subtext: 'Connect accounts to fill buckets',
+      label: `Quest: Reach ${goalLabel} Net Worth`,
+      subtext: 'Connect accounts to fill your buckets',
       pct: 0,
     };
   }
@@ -52,6 +83,15 @@ function getNetWorthMilestone(netWorth = 0, hasAnyData = false) {
       label: 'Quest: Positive Net Worth ($0)',
       subtext: `${formatCompactMoney(Math.abs(netWorth))} away from break-even`,
       pct: 12,
+    };
+  }
+  if (customNetWorthTarget > 0 && netWorth <= customNetWorthTarget) {
+    const pct = netWorth === 0 ? 0 : Math.min(100, Math.max(4, Math.round((netWorth / customNetWorthTarget) * 100)));
+    const remaining = Math.max(0, customNetWorthTarget - netWorth);
+    return {
+      label: `Goal: ${formatGoalShort(customNetWorthTarget)} Net Worth`,
+      subtext: remaining > 0 ? `${formatCompactMoney(remaining)} to reach your goal` : 'Custom Net Worth Goal Reached!',
+      pct,
     };
   }
   const ladders = [1000, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000];
@@ -240,6 +280,7 @@ export default function WealthBuckets({
   totalNetWorth = 0,
   debts = [],
   linkedAccountsCount = 0,
+  gameProfile,
   onSelectMetric,
 }) {
   const [replayKey, setReplayKey] = useState(0);
@@ -251,18 +292,27 @@ export default function WealthBuckets({
     totalDebts > 0 ||
     debts.length > 0;
 
+  const customCashGoal = gameProfile?.isCustomized ? Number(gameProfile.cashBucketTarget) || 0 : 0;
+  const customInvestGoal = gameProfile?.isCustomized ? Number(gameProfile.investBucketTarget) || 0 : 0;
+  const customNetWorthGoal = gameProfile?.isCustomized ? Number(gameProfile.netWorthTarget) || 0 : 0;
+  const customDebtStart = gameProfile?.isCustomized ? Number(gameProfile.debtPayoffTarget) || 0 : 0;
+
   // 1. Cash Bucket Progress
-  const cashMeta = getTierProgress(totalCashInBank, [1000, 3000, 10000, 25000, 50000, 100000]);
+  const cashMilestones = buildGoalMilestones(customCashGoal, [1000, 3000, 10000, 25000, 50000, 100000]);
+  const cashMeta = getTierProgress(totalCashInBank, cashMilestones, customCashGoal);
 
   // 2. Investments Bucket Progress
-  const investMeta = getTierProgress(totalPortfolioValue, [1000, 5000, 10000, 25000, 50000, 100000, 250000]);
+  const investMilestones = buildGoalMilestones(customInvestGoal, [1000, 5000, 10000, 25000, 50000, 100000, 250000]);
+  const investMeta = getTierProgress(totalPortfolioValue, investMilestones, customInvestGoal);
 
   // 3. Debt Crusher Tank Progress
   // When Debt > 0, tank shows amber lava proportional to debt burden (drains to 0% as you pay off!).
   // When accounts are linked & Debt === 0, tank celebrates 100% Debt-Free Shield!
-  const originalDebtSum =
+  const originalDebtSum = Math.max(
+    customDebtStart,
     debts.reduce((sum, d) => sum + (Number(d.principal || d.originalBalance || d.balance) || 0), 0) +
-    totalCreditBalance;
+      totalCreditBalance,
+  );
   const totalAssets = totalCashInBank + totalPortfolioValue;
   const debtCeiling = Math.max(originalDebtSum, totalAssets, totalDebts, 1000);
 
@@ -280,7 +330,12 @@ export default function WealthBuckets({
       : null;
 
   // 4. Overall Net Worth Milestone Bar
-  const nwMilestone = getNetWorthMilestone(totalNetWorth, hasAnyData);
+  const nwMilestone = getNetWorthMilestone(totalNetWorth, hasAnyData, customNetWorthGoal);
+
+  const cashShortTitle =
+    gameProfile?.isCustomized && gameProfile?.primaryGoalName
+      ? gameProfile.primaryGoalName.split(' ').slice(0, 2).join(' ')
+      : 'Cash Bucket';
 
   return (
     <div className="space-y-3.5">
@@ -329,14 +384,14 @@ export default function WealthBuckets({
       <div className="grid grid-cols-3 gap-2 sm:gap-3">
         {/* Bucket 1: Cash Cushion */}
         <LiquidBucket
-          title="Cash Bucket"
+          title={cashShortTitle}
           amountText={formatCompactMoney(totalCashInBank)}
           badgeText={`Lv.${cashMeta.level} Cash`}
           goalText={`Goal: ${formatGoalShort(cashMeta.target)}`}
           percentLabel={`${cashMeta.exactPct}%`}
           fillPct={cashMeta.visualFillPct}
           theme="blue"
-          replayKey={replayKey}
+          replayKey={`${replayKey}-${cashMeta.target}`}
           onClick={() => onSelectMetric?.('cash')}
         />
 
@@ -349,7 +404,7 @@ export default function WealthBuckets({
           percentLabel={`${investMeta.exactPct}%`}
           fillPct={investMeta.visualFillPct}
           theme="emerald"
-          replayKey={replayKey}
+          replayKey={`${replayKey}-${investMeta.target}`}
           onClick={() => onSelectMetric?.('investments')}
         />
 
@@ -395,3 +450,4 @@ export default function WealthBuckets({
     </div>
   );
 }
+

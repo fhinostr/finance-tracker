@@ -37,6 +37,8 @@ import {
   pullPlaidConfigFromCloud,
 } from '../lib/supabase.js';
 import { pushSyncToRelay } from '../lib/sync.js';
+import { getGameProfile } from '../lib/goalEngine.js';
+import GoalCoachChat from './GoalCoachChat.jsx';
 
 function ensurePlaidScript() {
   if (typeof window === 'undefined') return Promise.resolve(null);
@@ -86,6 +88,7 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
 
   // Goal & Windfall Account Allocations
   const [goalMapping, setGoalMapping] = useState(getGoalAccountMapping);
+  const [gameProfile, setGameProfile] = useState(getGameProfile);
 
   const handleGoalMappingChange = (role, accountId) => {
     const updated = { ...goalMapping, [role]: accountId };
@@ -241,13 +244,18 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
         setPlaidEnv(e.detail.env || 'production');
       }
     };
+    const handleGameProfileUpdate = (e) => {
+      if (e.detail) setGameProfile(e.detail);
+    };
     window.addEventListener('finance-tracker:accounts-updated', handleUpdate);
     window.addEventListener('finance-tracker:goal-accounts-updated', handleGoalUpdate);
     window.addEventListener('finance-tracker:plaid-updated', handlePlaidUpdate);
+    window.addEventListener('finance-tracker:game-profile-updated', handleGameProfileUpdate);
     return () => {
       window.removeEventListener('finance-tracker:accounts-updated', handleUpdate);
       window.removeEventListener('finance-tracker:goal-accounts-updated', handleGoalUpdate);
       window.removeEventListener('finance-tracker:plaid-updated', handlePlaidUpdate);
+      window.removeEventListener('finance-tracker:game-profile-updated', handleGameProfileUpdate);
     };
   }, []);
 
@@ -615,6 +623,15 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
             <span>{errorMessage}</span>
           </div>
         )}
+
+        {/* Goal Coach Objectives Bar right when opening / setting up accounts */}
+        <div className="mt-4">
+          <GoalCoachChat
+            variant="accounts"
+            gameProfile={gameProfile}
+            onProfileChange={setGameProfile}
+          />
+        </div>
 
         {/* Connected Accounts List */}
         <div className="mt-5 space-y-3">

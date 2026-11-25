@@ -1,17 +1,32 @@
 import { getSupabaseClient } from './supabase.js';
 import { getGoalAccountMapping, saveGoalAccountMapping, resolveAccountType, saveStoredAccounts } from './store.js';
+import { getGameProfile, saveGameProfile } from './goalEngine.js';
 
 const STORAGE_KEY_MAIN = 'finance-tracker:v2';
 const STORAGE_KEY_ACCOUNTS = 'finance-tracker:linked-accounts:v1';
 const STORAGE_KEY_PLAID = 'finance-tracker:plaid-config:v1';
 const STORAGE_KEY_SYNC_TIME = 'finance-tracker:last-cloud-sync';
 const STORAGE_KEY_SYNC_TOPIC = 'finance-tracker:sync-topic';
+const STORAGE_KEY_SYNC_PAIRED = 'finance-tracker:sync-paired';
 
 export const DEFAULT_SYNC_TOPIC = 'fhinostr_wealth_sync';
 
+export function hasPairedSyncTopic() {
+  try {
+    return localStorage.getItem(STORAGE_KEY_SYNC_PAIRED) === 'true';
+  } catch {
+    return false;
+  }
+}
+
 export function getSyncTopic() {
   try {
-    return localStorage.getItem(STORAGE_KEY_SYNC_TOPIC) || DEFAULT_SYNC_TOPIC;
+    const existing = localStorage.getItem(STORAGE_KEY_SYNC_TOPIC);
+    if (existing) return existing;
+    const randomSuffix = Math.random().toString(36).slice(2, 10);
+    const freshTopic = `wealth_${randomSuffix}`;
+    localStorage.setItem(STORAGE_KEY_SYNC_TOPIC, freshTopic);
+    return freshTopic;
   } catch {
     return DEFAULT_SYNC_TOPIC;
   }
@@ -19,9 +34,11 @@ export function getSyncTopic() {
 
 export function saveSyncTopic(topic) {
   try {
-    const clean = (topic || DEFAULT_SYNC_TOPIC).trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
-    localStorage.setItem(STORAGE_KEY_SYNC_TOPIC, clean || DEFAULT_SYNC_TOPIC);
-    return clean || DEFAULT_SYNC_TOPIC;
+    const clean = (topic || getSyncTopic()).trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+    const finalTopic = clean || getSyncTopic();
+    localStorage.setItem(STORAGE_KEY_SYNC_TOPIC, finalTopic);
+    localStorage.setItem(STORAGE_KEY_SYNC_PAIRED, 'true');
+    return finalTopic;
   } catch {
     return DEFAULT_SYNC_TOPIC;
   }
@@ -179,6 +196,7 @@ export function getLocalSnapshot() {
   };
 
   const cleanGoalAccounts = getGoalAccountMapping();
+  const cleanGameProfile = getGameProfile();
 
   return {
     version: 2,
@@ -190,6 +208,7 @@ export function getLocalSnapshot() {
     accounts: cleanAccounts,
     plaid: cleanPlaid,
     goalAccounts: cleanGoalAccounts,
+    gameProfile: cleanGameProfile,
   };
 }
 
@@ -211,6 +230,9 @@ export function applyLocalSnapshot(snapshot) {
     }
     if (snapshot.goalAccounts) {
       saveGoalAccountMapping(snapshot.goalAccounts);
+    }
+    if (snapshot.gameProfile) {
+      saveGameProfile(snapshot.gameProfile);
     }
     localStorage.setItem(STORAGE_KEY_SYNC_TIME, String(Date.now()));
 

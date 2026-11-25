@@ -64,7 +64,9 @@ import WindfallInterceptorModal from './components/WindfallInterceptorModal.jsx'
 import MetricDetailModal from './components/MetricDetailModal.jsx';
 import FinancialHealthScore from './components/FinancialHealthScore.jsx';
 import WealthBuckets from './components/WealthBuckets.jsx';
-import { checkAndApplyUrlSync, pullSyncFromRelay } from './lib/sync.js';
+import GoalCoachChat from './components/GoalCoachChat.jsx';
+import { getGameProfile } from './lib/goalEngine.js';
+import { checkAndApplyUrlSync, pullSyncFromRelay, hasPairedSyncTopic } from './lib/sync.js';
 import { pullPlaidConfigFromCloud } from './lib/supabase.js';
 
 const springAnim = {
@@ -81,6 +83,7 @@ export default function PersonalFinanceTracker() {
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [syncToast, setSyncToast] = useState('');
   const [linkedAccounts, setLinkedAccounts] = useState(getStoredAccounts);
+  const [gameProfile, setGameProfile] = useState(getGameProfile);
 
   // Behavioral Execution & Windfall Interceptor state (Gemini Recommendations)
   const [isWindfallModalOpen, setIsWindfallModalOpen] = useState(false);
@@ -167,14 +170,16 @@ export default function PersonalFinanceTracker() {
     checkAndApplyUrlSync().then((snapshot) => {
       if (snapshot) {
         setLinkedAccounts(getStoredAccounts());
+        setGameProfile(getGameProfile());
         setSyncToast('✓ Synced all accounts, balances & transactions from your laptop!');
         setTimeout(() => setSyncToast(''), 6000);
-      } else if (getStoredAccounts().length === 0) {
-        // Automatically check cloud relay for saved accounts & Plaid keys
+      } else if (getStoredAccounts().length === 0 && hasPairedSyncTopic()) {
+        // Only pull from cloud relay if this browser explicitly paired a sync code
         pullSyncFromRelay()
           .then((res) => {
             if (res?.success) {
               setLinkedAccounts(getStoredAccounts());
+              setGameProfile(getGameProfile());
             }
           })
           .catch(() => {});
@@ -186,15 +191,21 @@ export default function PersonalFinanceTracker() {
     };
     const handleDataSynced = () => {
       setLinkedAccounts(getStoredAccounts());
+      setGameProfile(getGameProfile());
       setSyncToast('✓ Synced latest updates across your devices!');
       setTimeout(() => setSyncToast(''), 5000);
+    };
+    const handleGameProfileUpdated = (e) => {
+      setGameProfile(e.detail || getGameProfile());
     };
 
     window.addEventListener('finance-tracker:accounts-updated', handleUpdate);
     window.addEventListener('finance-tracker:data-synced', handleDataSynced);
+    window.addEventListener('finance-tracker:game-profile-updated', handleGameProfileUpdated);
     return () => {
       window.removeEventListener('finance-tracker:accounts-updated', handleUpdate);
       window.removeEventListener('finance-tracker:data-synced', handleDataSynced);
+      window.removeEventListener('finance-tracker:game-profile-updated', handleGameProfileUpdated);
     };
   }, []);
 
@@ -624,6 +635,8 @@ export default function PersonalFinanceTracker() {
                 linkedAccounts={linkedAccounts}
                 optimization={optimization}
                 activeMonth={activeMonth}
+                gameProfile={gameProfile}
+                onProfileChange={setGameProfile}
                 onNavigateTab={setActiveTab}
                 onOpenLink={() => {
                   setLinkedAccounts(getStoredAccounts());
@@ -822,6 +835,8 @@ function DashboardTab({
   linkedAccounts = [],
   optimization: _optimization,
   activeMonth: _activeMonth,
+  gameProfile,
+  onProfileChange,
   onNavigateTab,
   onOpenLink,
   onOpenSync,
@@ -879,7 +894,8 @@ function DashboardTab({
       return 0;
     }
   }, [linkedAccounts]);
-  const relocationTarget = 3000;
+  const relocationTarget = Math.max(500, Number(gameProfile?.primaryGoalTarget) || 3000);
+  const primaryGoalTitle = gameProfile?.primaryGoalName || 'Move Cushion Goal';
   const relocationPct = Math.min(100, Math.round((relocationSaved / relocationTarget) * 100));
 
   return (
@@ -950,7 +966,15 @@ function DashboardTab({
           totalNetWorth={totalNetWorth}
           debts={debts}
           linkedAccountsCount={linkedAccounts.length}
+          gameProfile={gameProfile}
           onSelectMetric={setActiveMetricDetail}
+        />
+
+        {/* Conversational Goal Coach Chat Bar to Customize Buckets, Weights & Quests */}
+        <GoalCoachChat
+          variant="dashboard"
+          gameProfile={gameProfile}
+          onProfileChange={onProfileChange}
         />
 
         {/* Informational banner when no accounts are connected */}
@@ -986,6 +1010,7 @@ function DashboardTab({
           debts,
           linkedAccountsCount: linkedAccounts.length,
         }}
+        gameProfile={gameProfile}
         onOpenMetricModal={setActiveMetricDetail}
       />
 
@@ -1085,7 +1110,7 @@ function DashboardTab({
               <div>
                 <div className="flex items-center justify-between text-zinc-400 mb-1.5">
                   <span className="text-xs font-bold flex items-center gap-1.5 text-cyan-400">
-                    <Compass size={15} /> Move Cushion Goal
+                    <Compass size={15} /> {primaryGoalTitle}
                   </span>
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 group-hover:bg-cyan-500/20 transition-colors">
                     Info ↗
@@ -1103,7 +1128,7 @@ function DashboardTab({
                 </div>
               </div>
               <p className="text-[11px] text-cyan-400 mt-2 font-semibold">
-                {relocationPct}% Funded • Phase 1 Priority
+                {relocationPct}% Funded • {gameProfile?.focusLabel || 'Phase 1 Priority'}
               </p>
             </button>
 
@@ -1318,6 +1343,7 @@ function DashboardTab({
           budgets: _budgets || {},
           relocationSaved,
           relocationTarget,
+          primaryGoalName: primaryGoalTitle,
           actualNetIncome: _currentNet || 0,
           vehicleLoanBalance: debts.find(d => (d.name||'').toLowerCase().includes('car') || (d.name||'').toLowerCase().includes('kia') || (d.name||'').toLowerCase().includes('loan'))?.balance || 0,
         }}
