@@ -47,7 +47,10 @@ export default function MetricDetailModal({
   const {
     totalCashInBank = 0,
     totalCreditBalance = 0,
+    totalUserDebts = 0,
+    totalDebts: passedTotalDebts,
     totalPortfolioValue = 0,
+    totalNetWorth: passedNetWorth,
     totalVariable = 0,
     bankAccounts = [],
     creditAccounts = [],
@@ -61,10 +64,30 @@ export default function MetricDetailModal({
     vehicleLoanBalance = 0,
   } = data;
 
+  const fallbackUserDebts = debts.reduce((s, d) => s + (Number(d.balance) || 0), 0);
+  const resolvedTotalDebts = passedTotalDebts ?? (totalCreditBalance + (totalUserDebts || fallbackUserDebts));
+  const resolvedTotalAssets = totalCashInBank + totalPortfolioValue;
+  const resolvedNetWorth = passedNetWorth ?? (resolvedTotalAssets - resolvedTotalDebts);
+  const netCashOnHand = totalCashInBank - totalCreditBalance;
   const relocationPct = Math.min(100, Math.round((relocationSaved / relocationTarget) * 100));
 
   // Configuration for each Apple Health style metric
   const configs = {
+    net_worth: {
+      title: 'Total Net Worth (Bigger Picture)',
+      badge: 'Overall Financial Health',
+      badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+      icon: <TrendingUp className="text-emerald-400" size={24} />,
+      bigValue: resolvedNetWorth < 0 ? `-${formatMoney(Math.abs(resolvedNetWorth))}` : formatMoney(resolvedNetWorth),
+      subtext: `${formatMoney(resolvedTotalAssets)} owned minus ${formatMoney(resolvedTotalDebts)} owed`,
+      studentExplanation: {
+        what: 'Everything you own (Cash in Accounts + Investments) minus everything you owe (Credit Cards + Loans).',
+        why: 'Cash on hand shows if you can cover bills today, while Net Worth shows your real bigger-picture financial health—whether you are getting wealthier over time as investments grow and debts shrink.',
+        tip: 'Both investing $100 AND paying off $100 of debt raise your Net Worth by the exact same $100—focus on knocking out high-interest debt while steadily investing.',
+      },
+      targetTab: 'wealth',
+      actionLabel: 'Open Invest & Wealth',
+    },
     cash: {
       title: 'Cash in Accounts',
       badge: 'Liquid Money',
@@ -100,11 +123,7 @@ export default function MetricDetailModal({
       badge: 'Obligations',
       badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
       icon: <Car className="text-amber-400" size={24} />,
-      bigValue: totalCreditBalance > 0
-        ? `-${formatMoney(totalCreditBalance)}`
-        : debts.length > 0
-        ? formatMoney(debts.reduce((s, d) => s + (d.balance || 0), 0))
-        : '$0.00',
+      bigValue: resolvedTotalDebts > 0 ? `-${formatMoney(resolvedTotalDebts)}` : '$0.00',
       subtext: debts.length > 0 || creditAccounts.length > 0
         ? `${debts.length + creditAccounts.length} active obligation(s)`
         : 'No debts or loans linked',
@@ -289,6 +308,45 @@ export default function MetricDetailModal({
               <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 block px-1">
                 Interactive Detail & Tool
               </span>
+
+              {metricType === 'net_worth' && (
+                <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-2.5 text-xs">
+                  <div className="flex items-center justify-between py-1.5 border-b border-zinc-800/80">
+                    <span className="text-blue-400 font-semibold flex items-center gap-1.5">
+                      <Building2 size={14} /> + Cash in Accounts
+                    </span>
+                    <span className="font-mono font-bold text-white">{formatMoney(totalCashInBank)}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-1.5 border-b border-zinc-800/80">
+                    <span className="text-emerald-400 font-semibold flex items-center gap-1.5">
+                      <TrendingUp size={14} /> + Investments & Growth
+                    </span>
+                    <span className="font-mono font-bold text-emerald-400">{formatMoney(totalPortfolioValue)}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-1.5 border-b border-zinc-800/80">
+                    <span className="text-amber-400 font-semibold flex items-center gap-1.5">
+                      <CreditCard size={14} /> − Credit Cards & Loans
+                    </span>
+                    <span className="font-mono font-bold text-amber-400">
+                      {resolvedTotalDebts > 0 ? `-${formatMoney(resolvedTotalDebts)}` : '$0.00'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between pt-2">
+                    <span className="text-white font-extrabold uppercase tracking-wide text-[11px]">
+                      = Total Net Worth
+                    </span>
+                    <span className={`font-mono text-base font-black ${resolvedNetWorth < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                      {resolvedNetWorth < 0 ? `-${formatMoney(Math.abs(resolvedNetWorth))}` : formatMoney(resolvedNetWorth)}
+                    </span>
+                  </div>
+                  <div className="mt-2 p-2.5 rounded-xl bg-zinc-950 border border-zinc-800/80 flex items-center justify-between text-[11px] text-zinc-400">
+                    <span>Liquid Cash on Hand (Cash − Cards)</span>
+                    <span className="font-mono font-bold text-zinc-200">
+                      {netCashOnHand < 0 ? `-${formatMoney(Math.abs(netCashOnHand))}` : formatMoney(netCashOnHand)}
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {metricType === 'goal_cushion' && (
                 <div className="rounded-2xl border border-zinc-800 overflow-hidden">

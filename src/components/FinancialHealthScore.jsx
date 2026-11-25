@@ -8,18 +8,21 @@ import {
   Sparkles,
   Flame,
 } from 'lucide-react';
+import { formatMoney } from '../lib/store.js';
 
 /**
  * Calculates a dynamic, gamified Financial Health Score (0 - 100)
  * based on 4 real-world pillars:
  * 1. Cash Cushion (up to 30 pts)
- * 2. Debt Control (up to 25 pts)
+ * 2. Debt Control (up to 25 pts) — considers credit cards & loans vs. total assets
  * 3. Living Below Means / Surplus (up to 25 pts)
  * 4. Future Wealth & Investments (up to 20 pts)
  */
 function calculateFinancialScore({
   totalCashInBank = 0,
   totalCreditBalance = 0,
+  totalUserDebts = 0,
+  totalDebts = 0,
   totalPortfolioValue = 0,
   totalVariable = 0,
   actualNetIncome = 0,
@@ -27,9 +30,13 @@ function calculateFinancialScore({
   debts = [],
   linkedAccountsCount = 0,
 }) {
+  const resolvedDebts = totalDebts || (totalCreditBalance + totalUserDebts);
+  const totalAssets = totalCashInBank + totalPortfolioValue;
   const hasAnyData =
     linkedAccountsCount > 0 ||
     totalCashInBank > 0 ||
+    totalPortfolioValue > 0 ||
+    resolvedDebts > 0 ||
     relocationSaved > 0 ||
     debts.length > 0 ||
     actualNetIncome > 0 ||
@@ -62,13 +69,24 @@ function calculateFinancialScore({
     cashScore = Math.min(30, Math.round((realCash / 3000) * 30));
   }
 
-  // 2. Debt Control (Max 25 pts)
+  // 2. Debt Control (Max 25 pts) — evaluates toxic credit cards & overall debt vs. cash+investments
   let debtScore = 0;
-  if (linkedAccountsCount > 0 || debts.length > 0) {
-    if (totalCreditBalance === 0) {
-      debtScore = debts.length === 0 ? 25 : 20;
+  if (linkedAccountsCount > 0 || debts.length > 0 || resolvedDebts > 0) {
+    if (resolvedDebts === 0) {
+      debtScore = 25;
     } else {
-      debtScore = Math.max(0, Math.round(25 - (totalCreditBalance / 500) * 5));
+      // Credit card debt is high-interest (heavier penalty); installment loans weighed against total assets
+      const creditPenalty = Math.min(18, (totalCreditBalance / 500) * 4);
+      const loanDebt = Math.max(0, resolvedDebts - totalCreditBalance);
+      const assetCoveragePenalty =
+        loanDebt === 0
+          ? 0
+          : totalAssets >= loanDebt * 1.5
+          ? 3
+          : totalAssets >= loanDebt
+          ? 6
+          : Math.min(12, Math.round((loanDebt / Math.max(totalAssets, 2000)) * 6));
+      debtScore = Math.max(0, Math.round(25 - creditPenalty - assetCoveragePenalty));
     }
   }
 
@@ -186,7 +204,18 @@ export default function FinancialHealthScore({
       completed: (data.linkedAccountsCount || 0) > 0 && (data.totalCreditBalance || 0) === 0,
       actionMetric: 'debts',
     },
+    {
+      id: 'grow_investments',
+      title: 'Grow Investments Above $1,000',
+      reward: '+20 XP',
+      completed: (data.totalPortfolioValue || 0) >= 1000,
+      actionMetric: 'investments',
+    },
   ];
+
+  const resolvedNetWorth =
+    data.totalNetWorth ??
+    ((data.totalCashInBank || 0) + (data.totalPortfolioValue || 0) - ((data.totalDebts ?? data.totalCreditBalance) || 0));
 
   return (
     <>
@@ -242,10 +271,13 @@ export default function FinancialHealthScore({
 
             {/* Level Information */}
             <div className="space-y-1 min-w-0">
-              <div className="flex items-center">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <span className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full border ${stats.badgeColor} inline-flex items-center gap-1 whitespace-nowrap`}>
                   <span>{stats.levelIcon}</span>
                   <span>Level {stats.level} • {stats.levelName}</span>
+                </span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-zinc-800/90 border border-zinc-700 text-zinc-300 whitespace-nowrap">
+                  Net Worth: {resolvedNetWorth < 0 ? `-${formatMoney(Math.abs(resolvedNetWorth))}` : formatMoney(resolvedNetWorth)}
                 </span>
               </div>
               <h3 className="text-base sm:text-xl font-black text-white tracking-tight">

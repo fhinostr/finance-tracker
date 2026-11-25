@@ -838,7 +838,16 @@ function DashboardTab({
     totalPortfolioValue,
   } = categorizeAccounts(linkedAccounts);
 
+  const totalUserDebts = debts.reduce((sum, d) => sum + debtBalance(d, entries), 0);
+  const totalDebts = totalCreditBalance + totalUserDebts;
+  const totalAssets = totalCashInBank + totalPortfolioValue;
+  const totalNetWorth = totalAssets - totalDebts;
   const netAvailable = totalCashInBank - totalCreditBalance;
+
+  const balanceSheetVolume = totalCashInBank + totalPortfolioValue + totalDebts;
+  const cashBarPct = balanceSheetVolume > 0 ? Math.round((totalCashInBank / balanceSheetVolume) * 100) : 0;
+  const investBarPct = balanceSheetVolume > 0 ? Math.round((totalPortfolioValue / balanceSheetVolume) * 100) : 0;
+  const debtBarPct = balanceSheetVolume > 0 ? Math.max(0, 100 - cashBarPct - investBarPct) : 0;
 
   // 3 most recent transactions preview
   const recentTransactionsPreview = useMemo(() => {
@@ -879,26 +888,41 @@ function DashboardTab({
 
   return (
     <div className="space-y-6">
-      {/* 1. Apple Health Style Summary Header */}
+      {/* 1. Apple Health Style Summary Header (Bigger Picture: Cash + Investments - Debt) */}
       <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-zinc-900/95 via-zinc-900/80 to-zinc-950/95 border border-zinc-800 shadow-2xl backdrop-blur-2xl space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-800">
-          <div>
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pb-3.5 border-b border-zinc-800">
+          <button
+            type="button"
+            onClick={() => setActiveMetricDetail('net_worth')}
+            className="text-left group cursor-pointer"
+          >
             <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
               <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">
-                Financial Health • Summary
+                Financial Health • Bigger Picture
+              </span>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 group-hover:bg-emerald-500/20 transition-colors">
+                Info ↗
               </span>
             </div>
-            <div className="flex items-baseline gap-2 mt-1">
-              <h2 className="text-3xl sm:text-4xl font-black text-white">
-                {formatMoney(netAvailable)}
+            <div className="flex items-baseline gap-2 mt-1 flex-wrap">
+              <h2 className={`text-3xl sm:text-4xl font-black tracking-tight ${totalNetWorth < 0 ? 'text-rose-400' : 'text-white'}`}>
+                {totalNetWorth < 0 ? `-${formatMoney(Math.abs(totalNetWorth))}` : formatMoney(totalNetWorth)}
               </h2>
               <span className="text-xs text-zinc-400 font-medium">
-                total net cash on hand
+                total net worth
               </span>
             </div>
-          </div>
-          <div className="grid grid-cols-2 gap-2 w-full sm:w-auto">
+            <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-[11px] text-zinc-300">
+              <Building2 size={12} className="text-blue-400 shrink-0" />
+              <span>Net Cash on Hand:</span>
+              <span className={`font-bold ${netAvailable < 0 ? 'text-amber-300' : 'text-white'}`}>
+                {netAvailable < 0 ? `-${formatMoney(Math.abs(netAvailable))}` : formatMoney(netAvailable)}
+              </span>
+            </div>
+          </button>
+
+          <div className="grid grid-cols-2 gap-2 w-full sm:w-auto shrink-0">
             <button
               type="button"
               onClick={onOpenLink}
@@ -921,8 +945,103 @@ function DashboardTab({
           </div>
         </div>
 
+        {/* Bigger Picture Proportional Balance Bar (Cash vs Investments vs Debt) */}
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-[10px] font-semibold text-zinc-400 px-0.5">
+              <span>Balance Sheet Mix (Cash + Investments vs. Debt)</span>
+              <span className="text-zinc-300">
+                Assets {formatMoney(totalAssets)} · Debt {formatMoney(totalDebts)}
+              </span>
+            </div>
+            <div className="w-full h-2 rounded-full bg-zinc-950 border border-zinc-800 overflow-hidden flex">
+              {balanceSheetVolume > 0 ? (
+                <>
+                  {cashBarPct > 0 && (
+                    <div
+                      className="h-full bg-blue-500 transition-all duration-700"
+                      style={{ width: `${cashBarPct}%` }}
+                      title={`Cash: ${cashBarPct}%`}
+                    />
+                  )}
+                  {investBarPct > 0 && (
+                    <div
+                      className="h-full bg-emerald-500 transition-all duration-700"
+                      style={{ width: `${investBarPct}%` }}
+                      title={`Investments: ${investBarPct}%`}
+                    />
+                  )}
+                  {debtBarPct > 0 && (
+                    <div
+                      className="h-full bg-amber-500 transition-all duration-700"
+                      style={{ width: `${debtBarPct}%` }}
+                      title={`Debt: ${debtBarPct}%`}
+                    />
+                  )}
+                </>
+              ) : (
+                <div className="h-full w-full bg-zinc-800/40" />
+              )}
+            </div>
+          </div>
+
+          {/* Symmetrical 3-Column Bigger Picture Pillars */}
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveMetricDetail('cash')}
+              className="p-2.5 sm:p-3 rounded-2xl bg-zinc-950/80 border border-zinc-800/90 hover:border-blue-500/40 text-left transition-all cursor-pointer"
+            >
+              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-blue-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+                <span className="truncate">Cash</span>
+              </div>
+              <div className="text-xs sm:text-base font-black text-white mt-1 truncate">
+                {formatMoney(totalCashInBank)}
+              </div>
+              <p className="text-[10px] text-zinc-500 truncate mt-0.5">
+                Checking & Savings
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveMetricDetail('investments')}
+              className="p-2.5 sm:p-3 rounded-2xl bg-zinc-950/80 border border-zinc-800/90 hover:border-emerald-500/40 text-left transition-all cursor-pointer"
+            >
+              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-emerald-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                <span className="truncate">Investments</span>
+              </div>
+              <div className="text-xs sm:text-base font-black text-emerald-400 mt-1 truncate">
+                {formatMoney(totalPortfolioValue)}
+              </div>
+              <p className="text-[10px] text-zinc-500 truncate mt-0.5">
+                Stocks & Retirement
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveMetricDetail('debts')}
+              className="p-2.5 sm:p-3 rounded-2xl bg-zinc-950/80 border border-zinc-800/90 hover:border-amber-500/40 text-left transition-all cursor-pointer"
+            >
+              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-amber-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                <span className="truncate">Total Debt</span>
+              </div>
+              <div className="text-xs sm:text-base font-black text-amber-400 mt-1 truncate">
+                {totalDebts > 0 ? `-${formatMoney(totalDebts)}` : '$0.00'}
+              </div>
+              <p className="text-[10px] text-zinc-500 truncate mt-0.5">
+                Cards & Loans
+              </p>
+            </button>
+          </div>
+        </div>
+
         {/* Informational banner when no accounts are connected */}
-        {linkedAccounts.length === 0 && (
+        {linkedAccounts.length === 0 && debts.length === 0 && (
           <div className="p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/25 flex items-start gap-3">
             <Info size={16} className="text-blue-400 mt-0.5 shrink-0" />
             <div className="text-xs text-zinc-300">
@@ -944,7 +1063,10 @@ function DashboardTab({
         data={{
           totalCashInBank,
           totalCreditBalance,
+          totalUserDebts,
+          totalDebts,
           totalPortfolioValue,
+          totalNetWorth,
           totalVariable,
           actualNetIncome: _currentNet || 0,
           relocationSaved,
@@ -1027,13 +1149,17 @@ function DashboardTab({
                   </span>
                 </div>
                 <div className="text-2xl font-black text-amber-400">
-                  {totalCreditBalance > 0 ? `-${formatMoney(totalCreditBalance)}` : '$0.00'}
+                  {totalDebts > 0 ? `-${formatMoney(totalDebts)}` : '$0.00'}
                 </div>
               </div>
               <p className="text-[11px] text-zinc-400 mt-2">
-                {creditAccounts.length > 0
+                {creditAccounts.length > 0 && debts.length > 0
+                  ? `${creditAccounts.length} card${creditAccounts.length === 1 ? '' : 's'} & ${debts.length} loan${debts.length === 1 ? '' : 's'}`
+                  : creditAccounts.length > 0
                   ? `${creditAccounts.length} card balance${creditAccounts.length === 1 ? '' : 's'}`
-                  : (debts.length > 0 ? `${debts.length} active debt${debts.length === 1 ? '' : 's'}` : 'No debts linked')}
+                  : debts.length > 0
+                  ? `${debts.length} active loan${debts.length === 1 ? '' : 's'}`
+                  : 'No debts linked'}
               </p>
             </button>
 
@@ -1265,7 +1391,10 @@ function DashboardTab({
         data={{
           totalCashInBank,
           totalCreditBalance,
+          totalUserDebts,
+          totalDebts,
           totalPortfolioValue,
+          totalNetWorth,
           totalVariable,
           totalFixed,
           bankAccounts,
