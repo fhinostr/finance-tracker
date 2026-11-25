@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Car,
@@ -31,6 +31,7 @@ import {
   Smartphone,
   Compass,
   Layers,
+  Lock,
 } from 'lucide-react';
 import {
   useFinanceData,
@@ -65,7 +66,9 @@ import MetricDetailModal from './components/MetricDetailModal.jsx';
 import FinancialHealthScore from './components/FinancialHealthScore.jsx';
 import WealthBuckets from './components/WealthBuckets.jsx';
 import GoalCoachChat from './components/GoalCoachChat.jsx';
+import AuthGate from './components/AuthGate.jsx';
 import { getGameProfile } from './lib/goalEngine.js';
+import { saveUserWorkspace } from './lib/auth.js';
 import { checkAndApplyUrlSync, pullSyncFromRelay, hasPairedSyncTopic } from './lib/sync.js';
 import { pullPlaidConfigFromCloud } from './lib/supabase.js';
 
@@ -75,11 +78,60 @@ const springAnim = {
   damping: 30,
 };
 
-export default function PersonalFinanceTracker() {
+export default function AuthenticatedFinanceApp() {
+  // Always starts locked (null) on every app open — never persisted unlocked in localStorage
+  const [activeUser, setActiveUser] = useState(null);
+  const plaidFlowActiveRef = useRef(false);
+  const hiddenSinceRef = useRef(null);
+
+  useEffect(() => {
+    if (!activeUser) return;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenSinceRef.current = Date.now();
+        saveUserWorkspace(activeUser.id);
+      } else if (document.visibilityState === 'visible') {
+        const hiddenAt = hiddenSinceRef.current;
+        hiddenSinceRef.current = null;
+        // Re-lock like a bank app if backgrounded for >= 20s (unless user is mid-Plaid OAuth handoff)
+        if (hiddenAt && Date.now() - hiddenAt >= 20000 && !plaidFlowActiveRef.current) {
+          saveUserWorkspace(activeUser.id);
+          setActiveUser(null);
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [activeUser]);
+
+  if (!activeUser) {
+    return <AuthGate onAuthenticated={(user) => setActiveUser(user)} />;
+  }
+
+  return (
+    <PersonalFinanceTracker
+      key={activeUser.id}
+      activeUser={activeUser}
+      onPlaidFlowChange={(isOpen) => {
+        plaidFlowActiveRef.current = Boolean(isOpen);
+      }}
+      onLockApp={() => {
+        saveUserWorkspace(activeUser.id);
+        setActiveUser(null);
+      }}
+    />
+  );
+}
+
+function PersonalFinanceTracker({ activeUser, onPlaidFlowChange, onLockApp }) {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [includeBonus, setIncludeBonus] = useState(false);
   const [sheet, setSheet] = useState({ isOpen: false, autoListen: false });
   const [showLinkedModal, setShowLinkedModal] = useState(false);
+
+  useEffect(() => {
+    onPlaidFlowChange?.(showLinkedModal);
+  }, [showLinkedModal, onPlaidFlowChange]);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [syncToast, setSyncToast] = useState('');
   const [linkedAccounts, setLinkedAccounts] = useState(getStoredAccounts);
@@ -210,6 +262,13 @@ export default function PersonalFinanceTracker() {
   }, []);
 
   const { entries, budgets, addEntry, addEntries, updateBudget, setAllBudgets, removeEntry } = useFinanceData();
+
+  // Continuously persist active user's workspace snapshot so switching accounts or closing tabs never loses state
+  useEffect(() => {
+    if (activeUser?.id) {
+      saveUserWorkspace(activeUser.id);
+    }
+  }, [activeUser?.id, entries, budgets, linkedAccounts, gameProfile]);
 
   const [selectedMonth, setSelectedMonth] = useState(() => currentMonthKey());
 
@@ -437,13 +496,26 @@ export default function PersonalFinanceTracker() {
               )}
             </div>
 
-            <button
-              onClick={() => openAdd(false)}
-              aria-label="Add income or entry"
-              className="h-11 w-11 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 transition-all backdrop-blur-md border border-white/20 flex items-center justify-center shadow-lg shrink-0 cursor-pointer"
-            >
-              <DollarSign className="text-green-400" size={20} />
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => openAdd(false)}
+                aria-label="Add income or entry"
+                title="Add income or expense"
+                className="h-11 w-11 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 transition-all backdrop-blur-md border border-white/20 flex items-center justify-center shadow-lg cursor-pointer"
+              >
+                <DollarSign className="text-green-400" size={20} />
+              </button>
+              {onLockApp && (
+                <button
+                  onClick={onLockApp}
+                  aria-label="Lock app or switch user"
+                  title={activeUser?.name ? `Signed in as ${activeUser.name} • Tap to lock` : 'Lock app'}
+                  className="h-11 w-11 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 transition-all backdrop-blur-md border border-white/20 flex items-center justify-center shadow-lg cursor-pointer"
+                >
+                  <Lock className="text-emerald-400" size={18} />
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Second Row: Symmetrical 3-Column Pill Action Bar */}
