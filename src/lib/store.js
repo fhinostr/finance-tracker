@@ -56,10 +56,78 @@ try {
   // ignore
 }
 
+/**
+ * Accurately discriminates an account between 'bank' (checking/savings/spending/cash),
+ * 'credit' (credit cards / lines of credit), and 'investment' (brokerage/retirement/crypto).
+ * Prioritizes depository/checking & credit subtypes/names BEFORE institution names
+ * so e.g. "Robinhood (Checking)" or "Fidelity Cash Management" is ALWAYS 'bank', not 'investment'.
+ */
+export function resolveAccountType(a = {}) {
+  if (a.manualType && ['bank', 'investment', 'credit'].includes(a.manualType)) {
+    return a.manualType;
+  }
+
+  const rawType = String(a.plaidType || a.type || '').toLowerCase().trim();
+  const sub = String(a.subtype || '').toLowerCase().trim();
+  const name = String(a.name || '').toLowerCase().trim();
+  const official = String(a.officialName || '').toLowerCase().trim();
+  const combinedText = `${name} ${official}`;
+
+  // 1. Explicit Depository (Checking, Savings, Spending, Cash Management, HYSA)
+  const isExplicitDepository =
+    rawType === 'depository' ||
+    sub === 'checking' ||
+    sub === 'savings' ||
+    sub === 'hysa' ||
+    sub === 'money market' ||
+    sub === 'cash management' ||
+    sub === 'cd' ||
+    sub === 'prepaid' ||
+    sub.includes('checking') ||
+    sub.includes('saving') ||
+    /\b(checking|savings|hysa|spending|debit|cash management|money market|cash card|cash account)\b/.test(combinedText);
+
+  if (isExplicitDepository) {
+    return 'bank';
+  }
+
+  // 2. Explicit Credit Card / Line of Credit
+  const isExplicitCredit =
+    rawType === 'credit' ||
+    sub.includes('credit') ||
+    /\b(credit card|gold card|platinum card|charge card|line of credit|credit line)\b/.test(combinedText) ||
+    (/\b(visa|mastercard|amex|american express|discover)\b/.test(combinedText) && !combinedText.includes('debit'));
+
+  if (isExplicitCredit) {
+    return 'credit';
+  }
+
+  // 3. Explicit Investment / Brokerage / Retirement / Crypto
+  const isExplicitInvestment =
+    rawType === 'investment' ||
+    /\b(brokerage|investment|401k|403b|457b|ira|roth|529|crypto|pension|profit sharing|trust|ugma|utma|stock|etf|mutual fund)\b/.test(sub) ||
+    /\b(brokerage|portfolio|investing|investment|individual|margin|retirement|401k|401\(k\)|ira|roth|crypto)\b/.test(combinedText) ||
+    /\b(robinhood|vanguard|fidelity|schwab|webull|etrade|e\*trade|coinbase|acorns|betterment|wealthfront)\b/.test(combinedText);
+
+  if (isExplicitInvestment) {
+    return 'investment';
+  }
+
+  return 'bank';
+}
+
 export function getStoredAccounts() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_ACCOUNTS);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.map((a) => ({
+          ...a,
+          type: resolveAccountType(a),
+        }));
+      }
+    }
   } catch {
     // fallback
   }
@@ -68,9 +136,15 @@ export function getStoredAccounts() {
 
 export function saveStoredAccounts(accounts) {
   try {
-    localStorage.setItem(STORAGE_KEY_ACCOUNTS, JSON.stringify(accounts));
+    const normalized = Array.isArray(accounts)
+      ? accounts.map((a) => ({
+          ...a,
+          type: resolveAccountType(a),
+        }))
+      : [];
+    localStorage.setItem(STORAGE_KEY_ACCOUNTS, JSON.stringify(normalized));
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('finance-tracker:accounts-updated', { detail: accounts }));
+      window.dispatchEvent(new CustomEvent('finance-tracker:accounts-updated', { detail: normalized }));
     }
   } catch {
     // fallback
@@ -78,26 +152,10 @@ export function saveStoredAccounts(accounts) {
 }
 
 export function categorizeAccounts(accounts = []) {
-  const isCredit = (a) =>
-    a.type === 'credit' ||
-    a.subtype?.toLowerCase().includes('credit') ||
-    a.name?.toLowerCase().includes('credit card') ||
-    a.name?.toLowerCase().includes('visa') ||
-    a.name?.toLowerCase().includes('mastercard') ||
-    a.name?.toLowerCase().includes('amex');
-
-  const isInvestment = (a) =>
-    a.type === 'investment' ||
-    a.subtype?.toLowerCase().includes('brokerage') ||
-    a.subtype?.toLowerCase().includes('investment') ||
-    a.name?.toLowerCase().includes('robinhood') ||
-    a.name?.toLowerCase().includes('vanguard') ||
-    a.name?.toLowerCase().includes('fidelity') ||
-    a.name?.toLowerCase().includes('schwab');
-
-  const creditAccounts = accounts.filter(isCredit);
-  const investmentAccounts = accounts.filter(isInvestment);
-  const bankAccounts = accounts.filter((a) => !isCredit(a) && !isInvestment(a));
+  const normalized = accounts.map((a) => ({ ...a, type: resolveAccountType(a) }));
+  const creditAccounts = normalized.filter((a) => a.type === 'credit');
+  const investmentAccounts = normalized.filter((a) => a.type === 'investment');
+  const bankAccounts = normalized.filter((a) => a.type === 'bank');
 
   const totalCashInBank = bankAccounts.reduce(
     (sum, a) => sum + (Number(a.balance ?? a.balanceCurrent ?? a.balanceAvailable) || 0),

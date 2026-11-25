@@ -1,5 +1,5 @@
 import { getSupabaseClient } from './supabase.js';
-import { getGoalAccountMapping, saveGoalAccountMapping } from './store.js';
+import { getGoalAccountMapping, saveGoalAccountMapping, resolveAccountType, saveStoredAccounts } from './store.js';
 
 const STORAGE_KEY_MAIN = 'finance-tracker:v2';
 const STORAGE_KEY_ACCOUNTS = 'finance-tracker:linked-accounts:v1';
@@ -162,7 +162,9 @@ export function getLocalSnapshot() {
     id: a.id,
     name: a.name,
     balance: Number(a.balance) || 0,
-    type: a.type,
+    type: resolveAccountType(a),
+    plaidType: a.plaidType,
+    manualType: a.manualType,
     subtype: a.subtype,
     mask: a.mask,
     accessToken: a.accessToken,
@@ -202,7 +204,7 @@ export function applyLocalSnapshot(snapshot) {
       localStorage.setItem(STORAGE_KEY_MAIN, JSON.stringify(snapshot.main));
     }
     if (Array.isArray(snapshot.accounts)) {
-      localStorage.setItem(STORAGE_KEY_ACCOUNTS, JSON.stringify(snapshot.accounts));
+      saveStoredAccounts(snapshot.accounts);
     }
     if (snapshot.plaid) {
       localStorage.setItem(STORAGE_KEY_PLAID, JSON.stringify(snapshot.plaid));
@@ -214,7 +216,10 @@ export function applyLocalSnapshot(snapshot) {
 
     // Broadcast update events so React state in active tabs re-reads immediately
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('finance-tracker:accounts-updated', { detail: snapshot.accounts || [] }));
+      const normalizedAccounts = Array.isArray(snapshot.accounts)
+        ? snapshot.accounts.map((a) => ({ ...a, type: resolveAccountType(a) }))
+        : [];
+      window.dispatchEvent(new CustomEvent('finance-tracker:accounts-updated', { detail: normalizedAccounts }));
       window.dispatchEvent(new CustomEvent('finance-tracker:data-synced', { detail: snapshot }));
     }
     return true;

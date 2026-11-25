@@ -28,6 +28,7 @@ import {
   saveStoredAccounts,
   getGoalAccountMapping,
   saveGoalAccountMapping,
+  resolveAccountType,
 } from '../lib/store.js';
 import {
   callPlaidApi,
@@ -122,6 +123,7 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
       id: `manual-${Date.now()}`,
       name: manualName.trim(),
       type: resolvedType,
+      manualType: resolvedType,
       subtype: isSavings
         ? 'savings'
         : isCredit
@@ -145,6 +147,33 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
     setManualMask('');
     setShowManualForm(false);
     setStatusMessage(`Added ${newAcc.name} (${formatMoney(balanceNum)})`);
+  };
+
+  const handleCycleAccountType = (id) => {
+    const order = ['bank', 'investment', 'credit'];
+    const labels = { bank: 'Checking / Cash', investment: 'Investing', credit: 'Credit Card' };
+    const current = getStoredAccounts();
+    let updatedLabel = '';
+    const next = current.map((a) => {
+      if (a.id === id) {
+        const curType = resolveAccountType(a);
+        const nextType = order[(order.indexOf(curType) + 1) % order.length];
+        updatedLabel = labels[nextType];
+        return {
+          ...a,
+          type: nextType,
+          manualType: nextType,
+        };
+      }
+      return a;
+    });
+    saveStoredAccounts(next);
+    setAccounts(next);
+    pushSyncToRelay().catch(() => {});
+    if (updatedLabel) {
+      setStatusMessage(`Changed account category to ${updatedLabel}`);
+      setTimeout(() => setStatusMessage(''), 3000);
+    }
   };
 
   const handleSaveBalanceEdit = (id) => {
@@ -244,9 +273,13 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
   const syncAccount = useCallback(async (acc) => {
     setSyncingId(acc.id);
     try {
+      const storedBefore = getStoredAccounts();
+      const hasInvestmentOnToken = storedBefore.some(
+        (s) => s.accessToken === acc.accessToken && resolveAccountType(s) === 'investment',
+      );
       const data = await callPlaidApi('sync', {
         access_token: acc.accessToken,
-        account_type: acc.type,
+        account_type: hasInvestmentOnToken ? 'investment' : acc.type,
       });
 
       if (data.transactions && onSyncTransactions) {
@@ -261,7 +294,6 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
 
       if (Array.isArray(data.accounts) && data.accounts.length > 0) {
         const institutionName = acc.name.split(' (')[0] || 'Bank';
-        const isRobinhood = acc.type === 'investment' || institutionName.toLowerCase().includes('robinhood');
 
         // Remove old dummy placeholder that has mask '••••' for this access token
         updated = updated.filter(
@@ -269,11 +301,20 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
         );
 
         data.accounts.forEach((da) => {
-          const rawType = (da.type || '').toLowerCase();
-          const rawSub = (da.subtype || '').toLowerCase();
-          const isCredit = rawType === 'credit' || rawSub.includes('credit');
-          const isInv = isRobinhood || rawType === 'investment' || rawSub.includes('brokerage') || rawSub.includes('crypto');
-          const resolvedType = isInv ? 'investment' : isCredit ? 'credit' : 'bank';
+          const existingIdx = updated.findIndex(
+            (ex) => ex.id === da.id || (ex.accessToken === acc.accessToken && ex.mask === da.mask),
+          );
+          const existingAcc = existingIdx >= 0 ? updated[existingIdx] : null;
+          const fullAccountName = `${institutionName}${da.name ? ` (${da.name})` : ''}`.trim();
+
+          // Accurately classify each sub-account by its own Plaid type/subtype/name (never forcing all Robinhood accounts to 'investment')
+          const resolvedType = resolveAccountType({
+            ...da,
+            plaidType: da.type,
+            name: fullAccountName,
+            officialName: da.officialName,
+            manualType: existingAcc?.manualType,
+          });
 
           // Preserve the specific account's balance from Plaid
           let balance = Number(da.balance != null ? da.balance : da.current) || 0;
@@ -295,20 +336,19 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
             balance = Number(data.investments.totalValue) || 0;
           }
 
-          const existingIdx = updated.findIndex(
-            (ex) => ex.id === da.id || (ex.accessToken === acc.accessToken && ex.mask === da.mask),
-          );
-
           const payload = {
             id: da.id,
-            name: `${institutionName}${da.name ? ` (${da.name})` : ''}`.trim(),
+            name: fullAccountName,
+            plaidType: da.type,
+            officialName: da.officialName,
             type: resolvedType,
+            manualType: existingAcc?.manualType,
             subtype: da.subtype,
             balance,
             available: da.available,
             mask: da.mask || '••••',
             accessToken: acc.accessToken,
-            holdings: accHoldings,
+            holdings: resolvedType === 'investment' ? accHoldings : [],
             lastSynced: 'Just now',
           };
 
@@ -390,23 +430,26 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
         });
 
         const institutionName = metadata?.institution?.name || (explicitType === 'investment' ? 'Robinhood' : 'Linked Account');
-        const isRobinhood = explicitType === 'investment' || institutionName.toLowerCase().includes('robinhood');
 
         let newAccounts = [];
         if (Array.isArray(data.accounts) && data.accounts.length > 0) {
           newAccounts = data.accounts.map((acc, idx) => {
-            const rawType = (acc.type || '').toLowerCase();
-            const rawSub = (acc.subtype || '').toLowerCase();
-            const isCredit = rawType === 'credit' || rawSub.includes('credit');
-            const isInv = isRobinhood || rawType === 'investment' || rawSub.includes('brokerage');
-            const type = isInv ? 'investment' : isCredit ? 'credit' : 'bank';
+            const fullAccountName = `${institutionName}${acc.name ? ` (${acc.name})` : ''}`.trim();
+            const type = resolveAccountType({
+              ...acc,
+              plaidType: acc.type,
+              name: fullAccountName,
+              officialName: acc.officialName,
+            });
             let balance = Number(acc.balance) || 0;
             if (type === 'bank' && acc.available != null) {
               balance = Number(acc.available);
             }
             return {
               id: acc.id || `${data.item_id || 'acc'}-${idx}`,
-              name: `${institutionName}${acc.name ? ` (${acc.name})` : ''}`.trim(),
+              name: fullAccountName,
+              plaidType: acc.type,
+              officialName: acc.officialName,
               type,
               subtype: acc.subtype,
               balance,
@@ -417,11 +460,15 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
             };
           });
         } else {
+          const fallbackType = resolveAccountType({
+            name: institutionName,
+            type: explicitType === 'investment' ? 'investment' : 'bank',
+          });
           newAccounts = [
             {
               id: data.item_id || 'acc-' + Date.now(),
               name: institutionName,
-              type: isRobinhood ? 'investment' : 'bank',
+              type: fallbackType,
               balance: 0,
               mask: '••••',
               accessToken: data.access_token || 'token_' + Date.now(),
@@ -758,11 +805,33 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
                     )}
                   </div>
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2 truncate">
-                      <p className="text-sm font-semibold text-white truncate">{acc.name}</p>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="text-sm font-semibold text-white truncate max-w-[180px] sm:max-w-[260px]">{acc.name}</p>
                       <span className="text-[10px] text-gray-400 bg-white/10 px-1.5 py-0.5 rounded shrink-0">
                         ••••{acc.mask}
                       </span>
+                      <button
+                        type="button"
+                        onClick={() => handleCycleAccountType(acc.id)}
+                        title="Tap to switch category (Checking / Investing / Credit)"
+                        className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0 transition-colors ${
+                          acc.type === 'investment'
+                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25'
+                            : acc.type === 'credit'
+                            ? 'bg-amber-500/15 text-amber-300 border-amber-500/30 hover:bg-amber-500/25'
+                            : acc.subtype?.toLowerCase().includes('saving') || acc.name?.toLowerCase().includes('saving')
+                            ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30 hover:bg-cyan-500/25'
+                            : 'bg-blue-500/15 text-blue-300 border-blue-500/30 hover:bg-blue-500/25'
+                        }`}
+                      >
+                        {acc.type === 'investment'
+                          ? 'Investing'
+                          : acc.type === 'credit'
+                          ? 'Credit'
+                          : acc.subtype?.toLowerCase().includes('saving') || acc.name?.toLowerCase().includes('saving')
+                          ? 'Savings'
+                          : 'Checking'}
+                      </button>
                     </div>
 
                     {editingAccountId === acc.id ? (
