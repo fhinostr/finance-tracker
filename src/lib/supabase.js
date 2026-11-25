@@ -37,21 +37,30 @@ export function saveSupabaseConfig(url, anonKey) {
 }
 
 export const DEFAULT_PLAID_CLIENT_ID = '6ae243721cb88b000d857aa3';
+export const DEFAULT_PLAID_SECRET = '7993d817fd63cd261d8a6abb0d3b6d';
+export const DEFAULT_PLAID_ENV = 'production';
 const PLAID_CLOUD_RELAY_TOPIC = 'fhinostr_plaid_keys_v1';
 
 export function getPlaidConfig() {
   const envClientId = import.meta.env?.VITE_PLAID_CLIENT_ID || DEFAULT_PLAID_CLIENT_ID;
-  const envSecret = import.meta.env?.VITE_PLAID_SECRET || '';
-  const envPlaidEnv = import.meta.env?.VITE_PLAID_ENV || 'production';
+  const envSecret = import.meta.env?.VITE_PLAID_SECRET || DEFAULT_PLAID_SECRET;
+  const envPlaidEnv = import.meta.env?.VITE_PLAID_ENV || DEFAULT_PLAID_ENV;
 
   try {
     const raw = localStorage.getItem(STORAGE_KEY_PLAID);
     if (raw) {
       const parsed = JSON.parse(raw);
+      const resolvedSecret = (parsed.secret || envSecret || DEFAULT_PLAID_SECRET).trim();
+      const resolvedEnv =
+        resolvedSecret === DEFAULT_PLAID_SECRET
+          ? 'production'
+          : parsed.env === 'sandbox'
+          ? 'sandbox'
+          : parsed.env || envPlaidEnv || 'production';
       return {
         clientId: (parsed.clientId || envClientId || DEFAULT_PLAID_CLIENT_ID).trim(),
-        secret: (parsed.secret || envSecret || '').trim(),
-        env: parsed.env === 'sandbox' ? 'sandbox' : (parsed.env || envPlaidEnv || 'production'),
+        secret: resolvedSecret,
+        env: resolvedEnv,
       };
     }
   } catch {
@@ -59,8 +68,8 @@ export function getPlaidConfig() {
   }
   return {
     clientId: envClientId || DEFAULT_PLAID_CLIENT_ID,
-    secret: envSecret || '',
-    env: envPlaidEnv || 'production',
+    secret: envSecret || DEFAULT_PLAID_SECRET,
+    env: envPlaidEnv || DEFAULT_PLAID_ENV,
   };
 }
 
@@ -157,9 +166,9 @@ export async function callPlaidApi(action, payload = {}) {
 
   const fullPayload = {
     action,
-    plaid_client_id: plaid.clientId || undefined,
-    plaid_secret: plaid.secret || undefined,
-    plaid_env: plaid.env || 'development',
+    plaid_client_id: plaid.clientId || DEFAULT_PLAID_CLIENT_ID,
+    plaid_secret: plaid.secret || DEFAULT_PLAID_SECRET,
+    plaid_env: plaid.env || DEFAULT_PLAID_ENV,
     ...payload,
   };
 

@@ -22,10 +22,10 @@ Deno.serve(async (req) => {
     // ignore
   }
 
-  const PLAID_CLIENT_ID = (Deno.env.get('PLAID_CLIENT_ID') || body.plaid_client_id || '').trim();
-  const PLAID_SECRET = (Deno.env.get('PLAID_SECRET') || body.plaid_secret || '').trim();
-  const rawEnv = (Deno.env.get('PLAID_ENV') || body.plaid_env || 'sandbox').toLowerCase().trim();
-  const PLAID_ENV = rawEnv === 'production' ? 'production' : 'sandbox';
+  const PLAID_CLIENT_ID = (Deno.env.get('PLAID_CLIENT_ID') || body.plaid_client_id || '6ae243721cb88b000d857aa3').trim();
+  const PLAID_SECRET = (Deno.env.get('PLAID_SECRET') || body.plaid_secret || '7993d817fd63cd261d8a6abb0d3b6d').trim();
+  const rawEnv = (Deno.env.get('PLAID_ENV') || body.plaid_env || 'production').toLowerCase().trim();
+  const PLAID_ENV = rawEnv === 'sandbox' ? 'sandbox' : 'production';
 
   if (!PLAID_CLIENT_ID || !PLAID_SECRET) {
     return new Response(
