@@ -27,3 +27,9 @@ body {
     padding-top: 2rem;
   }
 }
+
+/* Ensure Plaid Link popup iframe always renders on top of all modals */
+iframe[id^="plaid-link-iframe"],
+.plaid-link-iframe {
+  z-index: 2147483647 !important;
+}

@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { usePlaidLink } from 'react-plaid-link';
 import {
   X,
   Building2,
@@ -38,9 +37,38 @@ import {
 } from '../lib/supabase.js';
 import { pushSyncToRelay } from '../lib/sync.js';
 
+function ensurePlaidScript() {
+  if (typeof window === 'undefined') return Promise.resolve(null);
+  if (window.Plaid) return Promise.resolve(window.Plaid);
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[src*="cdn.plaid.com/link"]');
+    if (existing) {
+      const check = setInterval(() => {
+        if (window.Plaid) {
+          clearInterval(check);
+          resolve(window.Plaid);
+        }
+      }, 50);
+      setTimeout(() => {
+        clearInterval(check);
+        if (window.Plaid) resolve(window.Plaid);
+        else reject(new Error('Plaid script load timeout'));
+      }, 6000);
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://cdn.plaid.com/link/v2/stable/link-initialize.js';
+    script.async = true;
+    script.onload = () => resolve(window.Plaid);
+    script.onerror = () => reject(new Error('Failed to load Plaid Link script'));
+    document.head.appendChild(script);
+  });
+}
+
 export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpdateInvestmentTotal }) {
   const [accounts, setAccounts] = useState(getStoredAccounts);
-  const [linkToken, setLinkToken] = useState(null);
+  const [isPlaidOpen, setIsPlaidOpen] = useState(false);
+  const plaidHandlerRef = useRef(null);
   const [loading, setLoading] = useState(false);
   const [syncingId, setSyncingId] = useState(null);
   const [statusMessage, setStatusMessage] = useState('');
@@ -144,52 +172,29 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
     setStatusMessage('Balance updated!');
   };
 
-  // Initialize or Refresh Link Token
-  const requestLinkToken = useCallback(async (accountType = 'bank') => {
-    setLoading(true);
-    setErrorMessage('');
-    try {
-      const data = await callPlaidApi('create-link-token', { account_type: accountType });
-      if (data?.link_token) {
-        setLinkToken(data.link_token);
-        setShowKeySettings(false);
-        return data.link_token;
-      }
-    } catch (err) {
-      setErrorMessage(
-        `${err.message || 'Unable to connect to Plaid'}. If you copied the Sandbox secret, make sure Environment is set to Sandbox (or Production if using Production secret).`,
-      );
-    } finally {
-      setLoading(false);
-    }
-    return null;
-  }, []);
-
   useEffect(() => {
     let active = true;
+    ensurePlaidScript().catch(() => {});
     pullPlaidConfigFromCloud()
       .then((cfg) => {
         if (!active) return;
         if (cfg?.clientId) setPlaidClientId(cfg.clientId);
         if (cfg?.secret) setPlaidSecret(cfg.secret);
         if (cfg?.env) setPlaidEnv(cfg.env);
-        if (cfg?.clientId && cfg?.secret) {
-          return callPlaidApi('create-link-token', { account_type: 'bank' });
-        }
-        return null;
-      })
-      .then((data) => {
-        if (!active) return;
-        if (data?.link_token) {
-          setLinkToken(data.link_token);
-        }
       })
       .catch((err) => {
-        console.warn('Plaid token background prefetch:', err?.message || err);
+        console.warn('Plaid config sync:', err?.message || err);
       });
 
     return () => {
       active = false;
+      if (plaidHandlerRef.current?.destroy) {
+        try {
+          plaidHandlerRef.current.destroy();
+        } catch {
+          // ignore
+        }
+      }
     };
   }, []);
 
@@ -233,7 +238,6 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
       setKeysSaved(false);
       setStatusMessage('');
     }, 3500);
-    requestLinkToken();
   };
 
   // Sync a single linked account
@@ -438,6 +442,7 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
         if (newAccounts[0]) {
           await syncAccount(newAccounts[0]);
         }
+        pushSyncToRelay().catch(() => {});
       } catch (err) {
         setErrorMessage(`Connection failed: ${err.message || 'Error connecting account'}`);
       } finally {
@@ -447,43 +452,55 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
     [syncAccount],
   );
 
-  const { open } = usePlaidLink({
-    token: linkToken,
-    onSuccess: (public_token, metadata) => onSuccess(public_token, metadata, 'bank'),
-  });
-
   // Launch Plaid with specific account type (bank vs investment)
   const launchPlaid = async (type = 'bank') => {
     setLoading(true);
     setErrorMessage('');
     setStatusMessage(type === 'investment' ? 'Opening Robinhood connection...' : 'Opening bank connection...');
     try {
-      const data = await callPlaidApi('create-link-token', { account_type: type });
+      const [data, PlaidSDK] = await Promise.all([
+        callPlaidApi('create-link-token', { account_type: type }),
+        ensurePlaidScript(),
+      ]);
+
       if (!data?.link_token) {
         throw new Error('Could not generate link token.');
       }
-      setLinkToken(data.link_token);
 
-      if (typeof window !== 'undefined' && window.Plaid) {
-        const handler = window.Plaid.create({
-          token: data.link_token,
-          onSuccess: (public_token, metadata) => {
-            onSuccess(public_token, metadata, type);
-          },
-          onExit: (err) => {
-            setLoading(false);
-            if (err) console.warn('Plaid Link exit:', err);
-          },
-        });
-        handler.open();
-      } else {
-        setTimeout(() => open(), 300);
+      if (!PlaidSDK) {
+        throw new Error('Plaid Link SDK failed to initialize. Check your connection.');
       }
+
+      if (plaidHandlerRef.current?.destroy) {
+        try {
+          plaidHandlerRef.current.destroy();
+        } catch {
+          // ignore
+        }
+      }
+
+      const handler = PlaidSDK.create({
+        token: data.link_token,
+        onSuccess: (public_token, metadata) => {
+          setIsPlaidOpen(false);
+          onSuccess(public_token, metadata, type);
+        },
+        onExit: (err) => {
+          setIsPlaidOpen(false);
+          setLoading(false);
+          setStatusMessage('');
+          if (err) console.warn('Plaid Link exit:', err);
+        },
+      });
+
+      plaidHandlerRef.current = handler;
+      setIsPlaidOpen(true);
+      handler.open();
     } catch (err) {
+      setIsPlaidOpen(false);
       setErrorMessage(
         `${err.message || 'Unable to connect to Plaid'}. Check your Plaid keys and Environment setting.`,
       );
-    } finally {
       setLoading(false);
     }
   };
@@ -497,16 +514,20 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
 
   return (
     <motion.div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+      className={
+        isPlaidOpen
+          ? 'fixed inset-0 z-0 opacity-0 pointer-events-none'
+          : 'fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4'
+      }
       initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
+      animate={{ opacity: isPlaidOpen ? 0 : 1 }}
       exit={{ opacity: 0 }}
     >
       <div className="absolute inset-0 bg-black/70 backdrop-blur-md" onClick={onClose} />
 
       <motion.div
         role="dialog"
-        aria-modal="true"
+        aria-modal={!isPlaidOpen}
         initial={{ y: '100%' }}
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
