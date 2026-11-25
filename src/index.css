@@ -19,7 +19,7 @@ body {
 
 /* Safe area top clearance for iPhone Home Screen Web App (Dynamic Island / Notch / Status Bar) */
 .app-safe-top {
-  padding-top: max(3.5rem, calc(env(safe-area-inset-top, 44px) + 0.85rem));
+  padding-top: max(5.5rem, calc(env(safe-area-inset-top, 54px) + 2.25rem));
 }
 
 @media (min-width: 640px) {

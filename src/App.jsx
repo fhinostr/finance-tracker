@@ -367,8 +367,11 @@ export default function PersonalFinanceTracker() {
 
   return (
     <div className="relative min-h-screen bg-black text-white font-sans selection:bg-blue-500/30 app-safe-top px-4 pb-6 sm:px-8">
-      {/* Ambient Liquid Background */}
-      <div className="fixed top-[-10%] left-[-10%] w-[500px] h-[500px] bg-purple-600/30 rounded-full mix-blend-screen filter blur-[120px] opacity-70 pointer-events-none animate-pulse" />
+      {/* Solid black iOS status-bar shield so content/glow never passes behind the clock/Dynamic Island */}
+      <div className="fixed top-0 left-0 right-0 h-[max(3.25rem,env(safe-area-inset-top,48px))] bg-black z-40 pointer-events-none sm:hidden" />
+
+      {/* Ambient Liquid Background (positioned below status bar zone) */}
+      <div className="fixed top-[18%] left-[-10%] w-[500px] h-[500px] bg-purple-600/30 rounded-full mix-blend-screen filter blur-[120px] opacity-70 pointer-events-none animate-pulse" />
       <div
         className="fixed bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-blue-600/30 rounded-full mix-blend-screen filter blur-[120px] opacity-70 pointer-events-none animate-pulse"
         style={{ animationDelay: '2s' }}
@@ -377,9 +380,9 @@ export default function PersonalFinanceTracker() {
       <div className="relative z-10 max-w-md mx-auto min-h-screen flex flex-col space-y-5 pb-24">
         {/* Header - Income Tracking & Mobile-Friendly Action Bar */}
         <motion.header
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col gap-3.5 pt-2"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="flex flex-col gap-3.5"
         >
           {/* Top Row: Monthly Net Income & Quick Add Button */}
           <div className="flex justify-between items-center">
