@@ -23,6 +23,7 @@ export const FOCUS_WEIGHTS = {
 
 export const PORTFOLIO_SPLITS = {
   conservative: {
+    shortTag: 'Safe Split',
     label: 'Safe & Steady (1–3 yr horizon)',
     summary: 'Prioritizes stability and guaranteed yield while keeping modest stock upside.',
     slices: [
@@ -32,6 +33,7 @@ export const PORTFOLIO_SPLITS = {
     ],
   },
   moderate: {
+    shortTag: 'Balanced',
     label: 'Balanced Growth (3–7 yr horizon)',
     summary: 'Classic diversified mix balancing stock market growth with a bond cushion.',
     slices: [
@@ -41,6 +43,7 @@ export const PORTFOLIO_SPLITS = {
     ],
   },
   growth: {
+    shortTag: 'Growth ETF',
     label: 'Long-Term Index Growth (7+ yr horizon)',
     summary: 'Proven 3-fund index strategy built for strong long-term compounding.',
     slices: [
@@ -50,6 +53,7 @@ export const PORTFOLIO_SPLITS = {
     ],
   },
   aggressive: {
+    shortTag: 'Max Growth',
     label: 'Max Compounding (10+ yr horizon)',
     summary: '100% equities tilted toward high-growth US & global index leaders.',
     slices: [
@@ -73,7 +77,6 @@ export function computeFinancialBlueprint(profile = {}) {
   const hasDebtFocus = focus === 'debt_crusher' || (Number(profile.debtPayoffTarget) || 0) > 0;
   const riskKey = PORTFOLIO_SPLITS[profile.riskProfile] ? profile.riskProfile : 'growth';
 
-  // Recommended benchmark percentages by focus mode
   let idealExpensesPct = 55;
   let idealSavingsPct = 20;
   let idealInvestPct = 25;
@@ -83,7 +86,7 @@ export function computeFinancialBlueprint(profile = {}) {
     idealExpensesPct = 55;
     idealDebtPct = 25;
     idealSavingsPct = 10;
-    idealInvestPct = 10; // Still capture employer 401(k) match!
+    idealInvestPct = 10;
   } else if (focus === 'saver') {
     idealExpensesPct = 55;
     idealSavingsPct = 30;
@@ -94,7 +97,6 @@ export function computeFinancialBlueprint(profile = {}) {
     idealInvestPct = 35;
   }
 
-  // If user reported real expenses, adapt the remaining surplus realistically while showing ideal vs actual
   let expensesDollar = Math.round((income * idealExpensesPct) / 100);
   let expenseNote = `Target ~${idealExpensesPct}% of take-home pay for rent, bills, food & daily life.`;
 
@@ -102,9 +104,9 @@ export function computeFinancialBlueprint(profile = {}) {
     expensesDollar = Math.min(income, reportedExpenses);
     const actualExpPct = Math.round((reportedExpenses / income) * 100);
     if (actualExpPct > 65) {
-      expenseNote = `Your current expenses are ${actualExpPct}% of income (${formatMoney(reportedExpenses)}). Trimming closer to 55%–60% (${formatMoney(Math.round(income * 0.58))}) will supercharge your goals!`;
+      expenseNote = `Your current expenses are ${actualExpPct}% of income (${formatMoney(reportedExpenses)}). Trimming closer to 55%–60% (${formatMoney(Math.round(income * 0.58))}) will accelerate your buckets!`;
     } else if (actualExpPct <= 50) {
-      expenseNote = `Awesome—your expenses are a lean ${actualExpPct}% of income (${formatMoney(reportedExpenses)}), leaving a huge ${100 - actualExpPct}% wealth-building margin!`;
+      expenseNote = `Awesome—your expenses are a lean ${actualExpPct}% of income (${formatMoney(reportedExpenses)}), leaving a ${100 - actualExpPct}% wealth-building margin!`;
     } else {
       expenseNote = `Healthy range: your expenses take ${actualExpPct}% of income (${formatMoney(reportedExpenses)}), right near the 50%–60% sweet spot.`;
     }
@@ -124,14 +126,12 @@ export function computeFinancialBlueprint(profile = {}) {
   const debtPct = Math.round((debtDollar / income) * 100);
   const investPct = Math.max(0, 100 - expensesPct - savingsPct - debtPct);
 
-  // Portfolio split in exact monthly dollars
   const portfolioTemplate = PORTFOLIO_SPLITS[riskKey];
   const portfolioBreakdown = portfolioTemplate.slices.map((s) => ({
     ...s,
     monthlyAmount: Math.round((investDollar * s.pct) / 100),
   }));
 
-  // Suggested variable category budgets (assuming ~40% of total expenses are flexible food/gas/shopping/fun, or remaining after fixed rent)
   const flexiblePool = Math.max(300, Math.round(expensesDollar * 0.42));
   const suggestedBudgets = {
     Groceries: Math.round(flexiblePool * 0.34),
@@ -142,13 +142,17 @@ export function computeFinancialBlueprint(profile = {}) {
     Health: Math.round(flexiblePool * 0.10),
   };
 
-  // Months to reach primary cash goal at this monthly savings rate
-  const cashGoal = Math.max(500, Number(profile.primaryGoalTarget) || 3000);
-  const monthsToCashGoal = savingsDollar > 0 ? Math.ceil(cashGoal / savingsDollar) : null;
+  const cashGoal = Number(profile.primaryGoalTarget) || 0;
+  const monthsToCashGoal =
+    cashGoal > 0 && savingsDollar > 0 ? Math.ceil(cashGoal / savingsDollar) : null;
 
   return {
     income,
     reportedExpenses,
+    expensesDollar,
+    savingsDollar,
+    debtDollar,
+    investDollar,
     surplus: remainingSurplus,
     expenseNote,
     allocations: [
@@ -167,7 +171,7 @@ export function computeFinancialBlueprint(profile = {}) {
         pct: savingsPct,
         color: '#3b82f6',
         sub: monthsToCashGoal
-          ? `Hits ${formatMoney(cashGoal)} in ~${monthsToCashGoal} mo (4.5% HYSA)`
+          ? `Hits ${formatMoney(cashGoal)} in ~${monthsToCashGoal} mo`
           : 'High-Yield Savings (4%–5% APY)',
       },
       ...(hasDebtFocus
@@ -178,7 +182,7 @@ export function computeFinancialBlueprint(profile = {}) {
               amount: debtDollar,
               pct: debtPct,
               color: '#f59e0b',
-              sub: 'Highest-APR card/loan first (Avalanche)',
+              sub: 'Highest-APR card/loan first',
             },
           ]
         : []),
@@ -188,10 +192,11 @@ export function computeFinancialBlueprint(profile = {}) {
         amount: investDollar,
         pct: investPct,
         color: '#10b981',
-        sub: '401(k) match -> Roth IRA -> Index ETFs',
+        sub: '401(k) match -> Roth IRA -> ETFs',
       },
     ],
     riskKey,
+    portfolioShortTag: portfolioTemplate.shortTag,
     portfolioLabel: portfolioTemplate.label,
     portfolioSummary: portfolioTemplate.summary,
     portfolioBreakdown,
@@ -200,28 +205,94 @@ export function computeFinancialBlueprint(profile = {}) {
   };
 }
 
+/**
+ * Calibrates all bucket names and dollar targets strictly from the user's stated goals,
+ * income, expenses, debt focus, and risk horizon once all 4 questions are answered.
+ */
+export function calibrateBucketsFromCircumstances(profile = {}) {
+  const next = { ...profile };
+  const income = Number(next.monthlyIncome) || 0;
+  const expenses = Number(next.monthlyFixedExpenses) || 0;
+  const isComplete = next.interviewStep === 'complete' && income > 0 && expenses > 0;
+
+  if (!isComplete) {
+    next.areBucketsUnlocked = false;
+    return next;
+  }
+
+  next.areBucketsUnlocked = true;
+
+  // 1. Primary Cash Bucket Target — derived from explicit goal OR real expense runway
+  if ((Number(next.userExplicitCashTarget) || 0) > 0) {
+    next.cashBucketTarget = Number(next.userExplicitCashTarget);
+    next.primaryGoalTarget = next.cashBucketTarget;
+    if (!next.primaryGoalName) next.primaryGoalName = 'Custom Savings Goal';
+  } else if (next.focusMode === 'debt_crusher' || (Number(next.debtPayoffTarget) || 0) > 0) {
+    // Debt Crusher circumstance: 1-Month Starter Safety Buffer while routing max surplus to debt
+    next.cashBucketTarget = Math.max(1000, Math.round(expenses / 100) * 100);
+    next.primaryGoalTarget = next.cashBucketTarget;
+    if (!next.primaryGoalName) next.primaryGoalName = '1-Mo Starter Buffer';
+  } else if (next.riskProfile === 'conservative') {
+    // Conservative circumstance: 6-Month Emergency Runway
+    next.cashBucketTarget = Math.max(3000, Math.round((expenses * 6) / 100) * 100);
+    next.primaryGoalTarget = next.cashBucketTarget;
+    if (!next.primaryGoalName) next.primaryGoalName = '6-Mo Safety Runway';
+  } else {
+    // Standard / Growth circumstance: 3-Month Emergency Runway based on user's actual bills
+    next.cashBucketTarget = Math.max(1500, Math.round((expenses * 3) / 100) * 100);
+    next.primaryGoalTarget = next.cashBucketTarget;
+    if (!next.primaryGoalName) next.primaryGoalName = '3-Mo Emergency Runway';
+  }
+
+  // 2. Investment Bucket Target — derived from explicit target OR 12 months of their blueprint's investing power
+  const bp = computeFinancialBlueprint(next);
+  if ((Number(next.userExplicitInvestTarget) || 0) > 0) {
+    next.investBucketTarget = Number(next.userExplicitInvestTarget);
+  } else {
+    const annualInvestCapacity = (bp?.investDollar || 0) * 12;
+    next.investBucketTarget = Math.max(
+      1200,
+      Math.round((annualInvestCapacity > 0 ? annualInvestCapacity : income * 2) / 100) * 100,
+    );
+  }
+
+  // 3. Overall Net Worth Milestone — derived from explicit target OR combined custom buckets
+  if ((Number(next.userExplicitNetWorthTarget) || 0) > 0) {
+    next.netWorthTarget = Number(next.userExplicitNetWorthTarget);
+  } else {
+    next.netWorthTarget = next.cashBucketTarget + next.investBucketTarget;
+  }
+
+  return next;
+}
+
 export const DEFAULT_GAME_PROFILE = {
   isCustomized: false,
+  areBucketsUnlocked: false,
+  hasGoalAnswer: false,
   playerName: '',
   focusMode: 'balanced',
   focusLabel: FOCUS_WEIGHTS.balanced.label,
-  primaryGoalName: 'Emergency & Move Cushion',
-  primaryGoalTarget: 3000,
-  cashBucketTarget: 3000,
-  investBucketTarget: 10000,
-  netWorthTarget: 25000,
+  primaryGoalName: '',
+  primaryGoalTarget: 0,
+  cashBucketTarget: 0,
+  investBucketTarget: 0,
+  netWorthTarget: 0,
+  userExplicitCashTarget: 0,
+  userExplicitInvestTarget: 0,
+  userExplicitNetWorthTarget: 0,
   monthlySpendCap: 0,
   debtPayoffTarget: 0,
   monthlyIncome: 0,
   monthlyFixedExpenses: 0,
-  riskProfile: 'growth',
+  riskProfile: '',
   interviewStep: 'goal', // 'goal' | 'income' | 'expenses' | 'risk' | 'complete'
   pillarWeights: { ...FOCUS_WEIGHTS.balanced.weights },
   chatHistory: [
     {
       id: 'welcome',
       role: 'coach',
-      text: "Hi! Let's build your personalized financial game plan in 4 quick questions. Step 1/4: What's your #1 goal right now? (e.g., Save $20k for a house, build a $5k emergency fund, pay off debt, or grow investments)",
+      text: "Welcome! Answer 4 quick questions about your goals, income, bills, and investing style so I can create custom buckets & splits tailored to your exact circumstances. Step 1/4: What's your #1 financial goal right now?",
       changes: [],
     },
   ],
@@ -234,7 +305,7 @@ export function getGameProfile() {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') {
         const mode = FOCUS_WEIGHTS[parsed.focusMode] ? parsed.focusMode : 'balanced';
-        return {
+        const merged = {
           ...DEFAULT_GAME_PROFILE,
           ...parsed,
           focusMode: mode,
@@ -248,6 +319,7 @@ export function getGameProfile() {
               ? parsed.chatHistory.slice(-14)
               : DEFAULT_GAME_PROFILE.chatHistory,
         };
+        return calibrateBucketsFromCircumstances(merged);
       }
     }
   } catch {
@@ -257,22 +329,22 @@ export function getGameProfile() {
 }
 
 export function saveGameProfile(profile) {
-  const clean = {
+  const calibrated = calibrateBucketsFromCircumstances({
     ...DEFAULT_GAME_PROFILE,
     ...profile,
     chatHistory: Array.isArray(profile?.chatHistory)
       ? profile.chatHistory.slice(-14)
       : DEFAULT_GAME_PROFILE.chatHistory,
-  };
+  });
   try {
-    localStorage.setItem(STORAGE_KEY_GAME_PROFILE, JSON.stringify(clean));
+    localStorage.setItem(STORAGE_KEY_GAME_PROFILE, JSON.stringify(calibrated));
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('finance-tracker:game-profile-updated', { detail: clean }));
+      window.dispatchEvent(new CustomEvent('finance-tracker:game-profile-updated', { detail: calibrated }));
     }
   } catch {
     // ignore storage write errors
   }
-  return clean;
+  return calibrated;
 }
 
 export function resetGameProfile() {
@@ -289,16 +361,17 @@ export function resetGameProfile() {
 }
 
 export function startGuidedInterview(currentProfile = getGameProfile()) {
-  const greeting = currentProfile.playerName ? `Let's do it, ${currentProfile.playerName}! ` : "Let's build your full plan! ";
+  const greeting = currentProfile.playerName ? `Let's recalibrate, ${currentProfile.playerName}! ` : "Let's build your custom buckets! ";
   const updated = {
     ...currentProfile,
     interviewStep: 'goal',
+    areBucketsUnlocked: false,
     chatHistory: [
       ...currentProfile.chatHistory.slice(-10),
       {
         id: `c-${Date.now()}`,
         role: 'coach',
-        text: `${greeting}Step 1/4: What's your #1 financial objective right now? (e.g., Save $15k for a house, build an emergency cushion, crush debt, or invest for retirement)`,
+        text: `${greeting}Step 1/4: What's your #1 financial objective right now? (e.g., Save $20k for a house, build an emergency fund, crush debt, or invest for retirement)`,
         changes: [],
       },
     ],
@@ -306,10 +379,6 @@ export function startGuidedInterview(currentProfile = getGameProfile()) {
   return saveGameProfile(updated);
 }
 
-/**
- * Extracts dollar/number amounts like "$15,000", "15k", "$1.5m", "4500" from a clause.
- * Supports allowSmallPlainNumbers when the coach explicitly asked for a monthly dollar figure.
- */
 function extractAmountsFromClause(clause = '', allowPlainNumbers = false) {
   const cleaned = clause
     .replace(/\b401\s*\(?k\)?\b/gi, ' retirement_acc ')
@@ -348,7 +417,6 @@ function extractAmountsFromClause(clause = '', allowPlainNumbers = false) {
 function normalizeIncomeToMonthly(rawAmount, text = '') {
   const lower = text.toLowerCase();
   if (/\b(year|yearly|annual|annually|salary|per\s*yr|\/yr)\b/.test(lower) || rawAmount >= 28000) {
-    // Convert gross annual salary to realistic ~76% after-tax monthly take-home
     const netMonthly = Math.round((rawAmount * 0.76) / 12);
     return { monthly: netMonthly, note: `Est. ${formatMoney(netMonthly)}/mo net (from ${formatMoney(rawAmount)}/yr)` };
   }
@@ -387,42 +455,39 @@ function detectRiskProfile(text = '') {
 function detectNamedSavingsGoal(text = '') {
   const lower = text.toLowerCase();
   if (/\b(house|home|down\s*payment|mortgage|condo|property)\b/.test(lower)) {
-    return { name: 'House Down Payment', defaultTarget: 20000 };
+    return { name: 'House Down Payment' };
   }
   if (/\b(wedding|engagement|honeymoon|ring)\b/.test(lower)) {
-    return { name: 'Wedding Fund', defaultTarget: 12000 };
+    return { name: 'Wedding Fund' };
   }
   if (/\b(baby|child|kid|maternity|family fund)\b/.test(lower)) {
-    return { name: 'Family & Baby Fund', defaultTarget: 10000 };
+    return { name: 'Family & Baby Fund' };
   }
   if (/\b(vacation|trip|travel|europe|japan|holiday|flight)\b/.test(lower)) {
     const placeMatch = lower.match(/\b(japan|europe|italy|hawaii|mexico|paris|asia)\b/);
     const label = placeMatch
       ? `${placeMatch[1].charAt(0).toUpperCase() + placeMatch[1].slice(1)} Trip Fund`
       : 'Travel & Vacation Fund';
-    return { name: label, defaultTarget: 4000 };
+    return { name: label };
   }
   if (/\b(car|truck|vehicle|suv|tesla|honda|toyota)\b/.test(lower) && !/\b(pay\s*off|loan|debt)\b/.test(lower)) {
-    return { name: 'Next Car Fund', defaultTarget: 8000 };
+    return { name: 'Next Car Fund' };
   }
   if (/\b(tuition|college|school|degree|masters|education)\b/.test(lower) && !/\b(loan|debt)\b/.test(lower)) {
-    return { name: 'Education Fund', defaultTarget: 10000 };
+    return { name: 'Education Fund' };
   }
   if (/\b(business|startup|side hustle|company)\b/.test(lower)) {
-    return { name: 'Startup Launch Fund', defaultTarget: 10000 };
+    return { name: 'Startup Launch Fund' };
   }
   if (/\b(move|moving|relocat|apartment|lease)\b/.test(lower)) {
-    return { name: 'Move & Apartment Fund', defaultTarget: 3500 };
+    return { name: 'Move & Apartment Fund' };
   }
   if (/\b(emergency|rainy day|safety net|cushion|buffer|hysa|savings)\b/.test(lower)) {
-    return { name: 'Emergency Cushion', defaultTarget: 5000 };
+    return { name: 'Emergency Runway' };
   }
   return null;
 }
 
-/**
- * Formats a concise conversational summary of the user's personalized blueprint.
- */
 function buildBlueprintCoachSummary(profile) {
   const bp = computeFinancialBlueprint(profile);
   if (!bp) return '';
@@ -433,11 +498,12 @@ function buildBlueprintCoachSummary(profile) {
     .map((s) => `${s.pct}% ${s.name.split(' (')[0]} (${formatMoney(s.monthlyAmount)}/mo)`)
     .join(', ');
 
-  return `Here is your custom Monthly Blueprint on ${formatMoney(bp.income)}/mo: ${allocParts}. ${bp.expenseNote} For your ${formatMoney(bp.allocations.find((a) => a.key === 'invest')?.amount || 0)}/mo investments (${bp.portfolioLabel}), aim for: ${splitParts}. Tap "Apply Blueprint to App" below to load your income & budgets directly into your tracker!`;
+  return `Your custom buckets are now unlocked and sized to your circumstances! Monthly split on ${formatMoney(bp.income)}/mo: ${allocParts}. Investment split (${bp.portfolioLabel}): ${splitParts}.`;
 }
 
 /**
  * Multi-turn Guided Financial Coach + Free-Form Natural Language Goal Engine.
+ * Buckets remain locked until all 4 questions (goal, income, expenses, risk) are answered!
  */
 export function processGoalChatMessage(rawText = '', currentProfile = getGameProfile()) {
   const trimmed = rawText.trim();
@@ -445,7 +511,6 @@ export function processGoalChatMessage(rawText = '', currentProfile = getGamePro
 
   const lowerAll = trimmed.toLowerCase();
 
-  // Handle reset request
   if (/^(reset|default|start over|clear goals|restore default)\b/i.test(lowerAll)) {
     const reset = {
       ...DEFAULT_GAME_PROFILE,
@@ -455,15 +520,14 @@ export function processGoalChatMessage(rawText = '', currentProfile = getGamePro
         {
           id: `c-${Date.now() + 1}`,
           role: 'coach',
-          text: "Reset complete! Step 1/4: What's your #1 financial goal right now?",
-          changes: ['Balanced Mode Restored'],
+          text: "Reset complete! Buckets are locked until we set your new plan. Step 1/4: What's your #1 financial goal right now?",
+          changes: ['Buckets Locked · Awaiting Goals'],
         },
       ],
     };
     return { profile: saveGameProfile(reset) };
   }
 
-  // Handle explicit request to start guided Q&A
   if (/\b(guide me|quiz|ask me|step by step|interview|help me plan)\b/i.test(lowerAll)) {
     return { profile: startGuidedInterview(currentProfile) };
   }
@@ -475,7 +539,6 @@ export function processGoalChatMessage(rawText = '', currentProfile = getGamePro
   const changes = [];
   const prevStep = currentProfile.interviewStep || 'goal';
 
-  // 1. Optional player name detection
   const nameMatch = trimmed.match(/\b(?:my name is|i am|i'm)\s+([A-Za-z]{2,15})\b/i);
   if (
     nameMatch &&
@@ -491,14 +554,12 @@ export function processGoalChatMessage(rawText = '', currentProfile = getGamePro
     changes.push(`Player: ${next.playerName}`);
   }
 
-  // Split sentence into clauses (preserving commas inside numbers like $12,000)
   const clauses = trimmed
     .split(/(?:,(?!\d)|;|\band\b|\balso\b|\bplus\b|\bwhile\b|\bthen\b|\.\s+)/i)
     .map((c) => c.trim())
     .filter(Boolean);
 
   let detectedFocus = null;
-  let updatedGoal = false;
   let updatedRisk = false;
 
   for (const clause of clauses) {
@@ -507,7 +568,7 @@ export function processGoalChatMessage(rawText = '', currentProfile = getGamePro
     const amounts = extractAmountsFromClause(clause, allowPlain);
     const amount = amounts[0] || null;
 
-    // 1. Explicit Income Mention ("I make $5,200/mo", "income is $4500", "$80k salary")
+    // 1. Explicit Income Mention
     if (
       /\b(income|make|earn|earning|take[\s-]*home|salary|paycheck|bring\s*in|net\s*pay|paid)\b/.test(cl) &&
       amount
@@ -518,7 +579,7 @@ export function processGoalChatMessage(rawText = '', currentProfile = getGamePro
       continue;
     }
 
-    // 2. Explicit Expenses / Rent / Bills Mention ("my expenses are $2,400", "rent and bills are $2,100")
+    // 2. Explicit Expenses / Bills Mention
     if (
       /\b(expense|expenses|rent|mortgage|bills|cost|living|overhead|spend|spending|budget|burn)\b/.test(cl) &&
       amount &&
@@ -526,7 +587,7 @@ export function processGoalChatMessage(rawText = '', currentProfile = getGamePro
     ) {
       next.monthlyFixedExpenses = amount;
       next.monthlySpendCap = amount;
-      changes.push(`Monthly Expenses: ${formatMoney(amount)}/mo`);
+      changes.push(`Monthly Bills: ${formatMoney(amount)}/mo`);
       continue;
     }
 
@@ -539,9 +600,9 @@ export function processGoalChatMessage(rawText = '', currentProfile = getGamePro
         clauses.length === 1)
     ) {
       next.riskProfile = riskMatch;
-      changes.push(`Portfolio: ${PORTFOLIO_SPLITS[riskMatch].label.split(' (')[0]}`);
+      changes.push(`Style: ${PORTFOLIO_SPLITS[riskMatch].label.split(' (')[0]}`);
       updatedRisk = true;
-      if (riskMatch === 'aggressive' && !detectedFocus && !currentProfile.isCustomized) {
+      if (riskMatch === 'aggressive' && !detectedFocus && !next.hasGoalAnswer) {
         detectedFocus = 'wealth_builder';
       }
       continue;
@@ -549,37 +610,38 @@ export function processGoalChatMessage(rawText = '', currentProfile = getGamePro
 
     // 4. Net Worth Goal
     if (/\b(net\s*worth)\b/.test(cl)) {
-      const target = amount || 50000;
-      next.netWorthTarget = target;
-      changes.push(`Net Worth Goal: ${formatMoney(target)}`);
+      if (amount) {
+        next.userExplicitNetWorthTarget = amount;
+        changes.push(`Net Worth Goal: ${formatMoney(amount)}`);
+      }
       if (!detectedFocus) detectedFocus = 'wealth_builder';
-      updatedGoal = true;
+      next.hasGoalAnswer = true;
       continue;
     }
 
     // 5. Debt Payoff
     if (/\b(debt|credit\s*card|loan|student\s*loan|auto\s*loan|car\s*loan|pay\s*off|paydown|crush|owe)\b/.test(cl)) {
       detectedFocus = 'debt_crusher';
+      next.hasGoalAnswer = true;
       if (amount) {
         next.debtPayoffTarget = amount;
-        changes.push(`Debt Crush Target: ${formatMoney(amount)}`);
+        changes.push(`Debt Target: ${formatMoney(amount)}`);
       } else {
-        changes.push('Priority: Crush Debt to $0');
+        changes.push('Goal: Crush Debt Fast');
       }
-      updatedGoal = true;
       continue;
     }
 
     // 6. Investing / Retirement Goal
     if (/\b(invest|investing|portfolio|retirement|401\s*\(?k\)?|ira|roth|stock|etf|brokerage|robinhood|fire|compound|wealth)\b/.test(cl)) {
       if (!detectedFocus) detectedFocus = 'wealth_builder';
-      const target = amount || Math.max(next.investBucketTarget, 25000);
-      next.investBucketTarget = target;
-      if (next.netWorthTarget < target) {
-        next.netWorthTarget = Math.round(target * 1.5);
+      next.hasGoalAnswer = true;
+      if (amount) {
+        next.userExplicitInvestTarget = amount;
+        changes.push(`Invest Goal: ${formatMoney(amount)}`);
+      } else {
+        changes.push('Goal: Long-Term Wealth');
       }
-      changes.push(`Invest Bucket: ${formatMoney(target)}`);
-      updatedGoal = true;
       continue;
     }
 
@@ -587,20 +649,19 @@ export function processGoalChatMessage(rawText = '', currentProfile = getGamePro
     const namedGoal = detectNamedSavingsGoal(clause);
     if (namedGoal || /\b(save|saving|cash|fund|goal|cushion|bank)\b/.test(cl)) {
       if (!detectedFocus) detectedFocus = 'saver';
+      next.hasGoalAnswer = true;
       const goalTitle = namedGoal ? namedGoal.name : 'Cash Savings Goal';
-      const target = amount || (namedGoal ? namedGoal.defaultTarget : 5000);
       next.primaryGoalName = goalTitle;
-      next.primaryGoalTarget = target;
-      next.cashBucketTarget = target;
-      if (next.netWorthTarget < target + next.investBucketTarget) {
-        next.netWorthTarget = target + next.investBucketTarget;
+      if (amount) {
+        next.userExplicitCashTarget = amount;
+        changes.push(`${goalTitle}: ${formatMoney(amount)}`);
+      } else {
+        changes.push(`Goal: ${goalTitle}`);
       }
-      changes.push(`${goalTitle}: ${formatMoney(target)}`);
-      updatedGoal = true;
       continue;
     }
 
-    // 8. Context-sensitive plain answer when user is answering a specific interview question!
+    // 8. Context-sensitive plain numeric answer
     if (amount && clauses.length === 1) {
       if (prevStep === 'income') {
         const norm = normalizeIncomeToMonthly(amount, clause);
@@ -611,54 +672,47 @@ export function processGoalChatMessage(rawText = '', currentProfile = getGamePro
       if (prevStep === 'expenses') {
         next.monthlyFixedExpenses = amount;
         next.monthlySpendCap = amount;
-        changes.push(`Monthly Expenses: ${formatMoney(amount)}/mo`);
+        changes.push(`Monthly Bills: ${formatMoney(amount)}/mo`);
         continue;
       }
-      next.primaryGoalTarget = amount;
-      next.cashBucketTarget = amount;
-      changes.push(`${next.primaryGoalName}: ${formatMoney(amount)}`);
-      updatedGoal = true;
+      next.hasGoalAnswer = true;
+      next.userExplicitCashTarget = amount;
+      changes.push(`Savings Target: ${formatMoney(amount)}`);
     }
   }
 
-  // Apply Focus Mode & Pillar Weights if detected
   if (detectedFocus && FOCUS_WEIGHTS[detectedFocus]) {
     next.focusMode = detectedFocus;
     next.focusLabel = FOCUS_WEIGHTS[detectedFocus].label;
     next.pillarWeights = { ...FOCUS_WEIGHTS[detectedFocus].weights };
-    changes.push(`Mode: ${next.focusLabel}`);
+    changes.push(`Focus: ${next.focusLabel}`);
   }
 
-  // Determine Next Guided Question in the Coaching Sequence!
+  // Advance Guided Step Strictly: Goal -> Income -> Expenses -> Risk -> Complete (Unlock Buckets!)
   let coachReply = '';
-  const asksForSplitAdvice = /\b(split|suggest|recommend|how\s*much|allocation|blueprint|breakdown|50\/30\/20)\b/.test(lowerAll);
 
-  if (asksForSplitAdvice && next.monthlyIncome > 0) {
-    next.interviewStep = 'complete';
-    coachReply = buildBlueprintCoachSummary(next);
+  if (!next.hasGoalAnswer) {
+    next.interviewStep = 'goal';
+    coachReply =
+      'Step 1/4: Tell me your #1 financial goal first (for example: "Save $20k for a house", "Build an emergency fund", "Pay off debt", or "Invest for retirement")!';
   } else if (!next.monthlyIncome) {
-    // Ask Step 2: Monthly Take-Home Income
     next.interviewStep = 'income';
-    const intro = updatedGoal
-      ? `Awesome${next.playerName ? `, ${next.playerName}` : ''}! I've set your buckets for ${next.focusLabel}. `
-      : '';
-    coachReply = `${intro}Step 2/4: Roughly how much is your monthly take-home pay (after taxes)? Type an amount like "$4,500/mo" or "$75k/yr", or tap a quick option below so I can calculate your ideal savings & investment split!`;
+    coachReply = `Got your goal${next.playerName ? `, ${next.playerName}` : ''}! Step 2/4: What is your monthly take-home income (after taxes)? Type an amount like "$4,500/mo" or "$75k/yr" so we size your buckets to your real income.`;
   } else if (!next.monthlyFixedExpenses) {
-    // Ask Step 3: Monthly Essential Expenses
     next.interviewStep = 'expenses';
-    coachReply = `Got it—${formatMoney(next.monthlyIncome)}/mo take-home! Step 3/4: About how much do your monthly essentials & bills (rent, utilities, groceries, gas, minimum payments) cost right now?`;
-  } else if (prevStep !== 'complete' && !updatedRisk) {
-    // Ask Step 4: Risk Tolerance & Investment Horizon
+    coachReply = `Great (${formatMoney(next.monthlyIncome)}/mo take-home)! Step 3/4: Roughly how much are your essential monthly bills & living costs (rent, groceries, gas, utilities, minimum payments)?`;
+  } else if (!next.riskProfile && !updatedRisk) {
     next.interviewStep = 'risk';
     const surplus = Math.max(0, next.monthlyIncome - next.monthlyFixedExpenses);
     coachReply =
       surplus > 0
-        ? `Nice! That gives you ${formatMoney(surplus)}/mo in wealth-building power above your ${formatMoney(next.monthlyFixedExpenses)} expenses. Step 4/4: What's your investing comfort level & timeline so I can recommend an exact portfolio split?`
-        : `Right now your ${formatMoney(next.monthlyFixedExpenses)}/mo expenses match or exceed ${formatMoney(next.monthlyIncome)}/mo income—we'll build a plan to free up cash! Step 4/4: What's your investing comfort level once cash flow opens up?`;
+        ? `That leaves ${formatMoney(surplus)}/mo above your ${formatMoney(next.monthlyFixedExpenses)} bills! Final Step 4/4: Choose your investing comfort & timeline (Safe 1–3 yrs, Balanced 3–7 yrs, Growth 7+ yrs, or Max Aggressive 10+ yrs) to unlock your custom buckets!`
+        : `Your ${formatMoney(next.monthlyFixedExpenses)}/mo bills currently match ${formatMoney(next.monthlyIncome)}/mo income—we'll size a protective buffer first! Final Step 4/4: Choose your investing comfort style to unlock your custom buckets!`;
   } else {
-    // Step 4 Complete -> Deliver Full Personalized Blueprint & Investment Split!
     next.interviewStep = 'complete';
-    coachReply = buildBlueprintCoachSummary(next);
+    if (!next.riskProfile) next.riskProfile = 'growth';
+    const calibratedPreview = calibrateBucketsFromCircumstances(next);
+    coachReply = buildBlueprintCoachSummary(calibratedPreview);
   }
 
   next.chatHistory = [

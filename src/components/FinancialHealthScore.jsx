@@ -39,10 +39,11 @@ function calculateFinancialScore(
     surplus: gameProfile?.pillarWeights?.surplus ?? 25,
     invest: gameProfile?.pillarWeights?.invest ?? 20,
   };
-  const cashGoalTarget = Math.max(500, Number(gameProfile?.primaryGoalTarget) || 3000);
-  const investGoalTarget = Math.max(500, Number(gameProfile?.investBucketTarget) || 5000);
+  const goalsUnlocked = Boolean(gameProfile?.areBucketsUnlocked);
+  const cashGoalTarget = Math.max(500, Number(gameProfile?.primaryGoalTarget) || 1000);
+  const investGoalTarget = Math.max(500, Number(gameProfile?.investBucketTarget) || 1200);
   const spendCap = Number(gameProfile?.monthlySpendCap) || 0;
-  const cashLabel = gameProfile?.isCustomized ? 'Goal Cushion' : 'Cash Cushion';
+  const cashLabel = gameProfile?.primaryGoalName ? 'Goal Cushion' : 'Cash Cushion';
 
   const resolvedDebts = totalDebts || (totalCreditBalance + totalUserDebts);
   const totalAssets = totalCashInBank + totalPortfolioValue;
@@ -56,16 +57,16 @@ function calculateFinancialScore(
     actualNetIncome > 0 ||
     totalVariable > 0;
 
-  if (!hasAnyData) {
+  if (!goalsUnlocked || !hasAnyData) {
     return {
       score: 0,
       level: 0,
-      levelName: 'Unlinked',
+      levelName: !goalsUnlocked ? 'Goals Needed' : 'Unlinked',
       levelIcon: '🔒',
       badgeColor: 'bg-zinc-800 text-zinc-400 border-zinc-700',
       nextLevelTarget: 25,
-      summaryTagline: gameProfile?.isCustomized
-        ? `Tuned for ${gameProfile.focusLabel}! Link accounts to track real progress.`
+      summaryTagline: !goalsUnlocked
+        ? 'Answer the 4 Goal Coach questions above so your score & quests calibrate to your real goals and circumstances.'
         : 'Link your accounts to calculate your real Financial Health Score.',
       pillars: {
         cash: { score: 0, max: weights.cash, label: cashLabel },

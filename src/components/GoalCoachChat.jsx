@@ -224,7 +224,7 @@ export default function GoalCoachChat({
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
-          {blueprint && variant === 'dashboard' && (
+          {profile.areBucketsUnlocked && blueprint && variant === 'dashboard' && (
             <button
               type="button"
               onClick={() => setShowBlueprint((v) => !v)}
@@ -356,7 +356,7 @@ export default function GoalCoachChat({
 
       {/* Personalized Monthly Paycheck Split & Investment Portfolio Blueprint Card */}
       <AnimatePresence initial={false}>
-        {blueprint && showBlueprint && variant === 'dashboard' && (
+        {profile.areBucketsUnlocked && blueprint && showBlueprint && variant === 'dashboard' && (
           <motion.div
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}

@@ -992,9 +992,13 @@ function DashboardTab({
       return 0;
     }
   }, [linkedAccounts]);
-  const relocationTarget = Math.max(500, Number(gameProfile?.primaryGoalTarget) || 3000);
-  const primaryGoalTitle = gameProfile?.primaryGoalName || 'Move Cushion Goal';
-  const relocationPct = Math.min(100, Math.round((relocationSaved / relocationTarget) * 100));
+  const hasUnlockedGoals = Boolean(gameProfile?.areBucketsUnlocked);
+  const relocationTarget = hasUnlockedGoals ? Math.max(500, Number(gameProfile?.primaryGoalTarget) || 1000) : 0;
+  const primaryGoalTitle = hasUnlockedGoals
+    ? gameProfile?.primaryGoalName || 'Primary Cash Goal'
+    : 'Savings Goal (Locked)';
+  const relocationPct =
+    relocationTarget > 0 ? Math.min(100, Math.round((relocationSaved / relocationTarget) * 100)) : 0;
   const effectiveNetIncome = _currentNet > 0 ? _currentNet : Number(gameProfile?.monthlyIncome) || 0;
 
   return (
@@ -1056,26 +1060,38 @@ function DashboardTab({
           </div>
         </div>
 
-        {/* Gamified Animated Liquid Wealth Buckets (Cash • Investments • Debt) */}
+        {/* Before goals are answered, show Goal Coach first so user answers the 4 questions to unlock buckets */}
+        {!hasUnlockedGoals && (
+          <GoalCoachChat
+            variant="dashboard"
+            gameProfile={gameProfile}
+            onProfileChange={onProfileChange}
+            onApplyBlueprint={onApplyBlueprint}
+          />
+        )}
+
+        {/* Circumstance-Adjusted Liquid Wealth Buckets (Locked until 4 Goal Coach questions are answered) */}
         <WealthBuckets
           totalCashInBank={totalCashInBank}
           totalPortfolioValue={totalPortfolioValue}
           totalDebts={totalDebts}
           totalCreditBalance={totalCreditBalance}
           totalNetWorth={totalNetWorth}
+          totalVariable={totalVariable}
           debts={debts}
           linkedAccountsCount={linkedAccounts.length}
           gameProfile={gameProfile}
           onSelectMetric={setActiveMetricDetail}
         />
 
-        {/* Conversational Goal Coach Chat Bar to Customize Buckets, Weights & Quests */}
-        <GoalCoachChat
-          variant="dashboard"
-          gameProfile={gameProfile}
-          onProfileChange={onProfileChange}
-          onApplyBlueprint={onApplyBlueprint}
-        />
+        {hasUnlockedGoals && (
+          <GoalCoachChat
+            variant="dashboard"
+            gameProfile={gameProfile}
+            onProfileChange={onProfileChange}
+            onApplyBlueprint={onApplyBlueprint}
+          />
+        )}
 
         {/* Informational banner when no accounts are connected */}
         {linkedAccounts.length === 0 && debts.length === 0 && (
@@ -1218,7 +1234,9 @@ function DashboardTab({
                 </div>
                 <div className="text-2xl font-black text-white">
                   {formatMoney(relocationSaved)}{' '}
-                  <span className="text-xs text-zinc-400 font-normal">/ {formatMoney(relocationTarget)}</span>
+                  {hasUnlockedGoals && (
+                    <span className="text-xs text-zinc-400 font-normal">/ {formatMoney(relocationTarget)}</span>
+                  )}
                 </div>
                 <div className="w-full h-2 rounded-full bg-zinc-900 border border-zinc-800 overflow-hidden mt-2">
                   <div
@@ -1228,7 +1246,9 @@ function DashboardTab({
                 </div>
               </div>
               <p className="text-[11px] text-cyan-400 mt-2 font-semibold">
-                {relocationPct}% Funded • {gameProfile?.focusLabel || 'Phase 1 Priority'}
+                {hasUnlockedGoals
+                  ? `${relocationPct}% Funded • ${gameProfile?.focusLabel || 'Custom Target'}`
+                  : 'Answer Goal Coach above to set target'}
               </p>
             </button>
 

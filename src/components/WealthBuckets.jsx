@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Sparkles, ShieldCheck, Flame, RotateCcw } from 'lucide-react';
+import { Sparkles, ShieldCheck, Flame, RotateCcw, Lock, CheckCircle2 } from 'lucide-react';
 import { formatMoney } from '../lib/store.js';
+import { computeFinancialBlueprint } from '../lib/goalEngine.js';
 
 function formatCompactMoney(val = 0) {
   const abs = Math.abs(Number(val) || 0);
@@ -29,83 +30,13 @@ function formatGoalShort(target = 1000) {
   return `$${target}`;
 }
 
-function buildGoalMilestones(customTarget, defaults) {
-  const base = Number(customTarget) || 0;
-  if (base <= 0) return defaults;
-  const steps = [
-    Math.max(500, Math.round(base * 0.25)),
-    Math.max(1000, Math.round(base * 0.5)),
-    base,
-    base * 2,
-    base * 5,
-  ];
-  return Array.from(new Set(steps)).sort((a, b) => a - b);
-}
-
-function getTierProgress(amount = 0, milestones = [1000, 3000, 10000, 25000, 50000, 100000], customTarget = 0) {
-  const clean = Math.max(0, Number(amount) || 0);
-  if (customTarget > 0 && clean <= customTarget) {
-    const exactPct = clean >= customTarget ? 100 : Math.round((clean / customTarget) * 100);
-    const visualFillPct = clean <= 0 ? 0 : Math.min(100, Math.max(10, exactPct));
-    const level = exactPct >= 75 ? 3 : exactPct >= 35 ? 2 : 1;
-    return {
-      level,
-      target: customTarget,
-      exactPct,
-      visualFillPct,
-    };
-  }
-  let idx = milestones.findIndex((m) => clean < m);
-  if (idx === -1) idx = milestones.length - 1;
-  const target = milestones[idx];
-  const level = idx + 1;
-  const exactPct = clean >= target ? 100 : Math.round((clean / target) * 100);
-  const visualFillPct = clean <= 0 ? 0 : Math.min(100, Math.max(10, exactPct));
-  return {
-    level,
-    target,
-    exactPct,
-    visualFillPct,
-  };
-}
-
-function getNetWorthMilestone(netWorth = 0, hasAnyData = false, customNetWorthTarget = 0) {
-  if (!hasAnyData && netWorth === 0) {
-    const goalLabel = customNetWorthTarget > 0 ? formatGoalShort(customNetWorthTarget) : '$1k';
-    return {
-      label: `Quest: Reach ${goalLabel} Net Worth`,
-      subtext: 'Connect accounts to fill your buckets',
-      pct: 0,
-    };
-  }
-  if (netWorth < 0) {
-    return {
-      label: 'Quest: Positive Net Worth ($0)',
-      subtext: `${formatCompactMoney(Math.abs(netWorth))} away from break-even`,
-      pct: 12,
-    };
-  }
-  if (customNetWorthTarget > 0 && netWorth <= customNetWorthTarget) {
-    const pct = netWorth === 0 ? 0 : Math.min(100, Math.max(4, Math.round((netWorth / customNetWorthTarget) * 100)));
-    const remaining = Math.max(0, customNetWorthTarget - netWorth);
-    return {
-      label: `Goal: ${formatGoalShort(customNetWorthTarget)} Net Worth`,
-      subtext: remaining > 0 ? `${formatCompactMoney(remaining)} to reach your goal` : 'Custom Net Worth Goal Reached!',
-      pct,
-    };
-  }
-  const ladders = [1000, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000];
-  const next = ladders.find((m) => netWorth < m) || 1000000;
-  const prevIdx = ladders.indexOf(next) - 1;
-  const prev = prevIdx >= 0 ? ladders[prevIdx] : 0;
-  const span = Math.max(1, next - prev);
-  const pct = netWorth >= next ? 100 : Math.min(100, Math.max(4, Math.round(((netWorth - prev) / span) * 100)));
-  const remaining = Math.max(0, next - netWorth);
-  return {
-    label: `Road to ${formatGoalShort(next)} Net Worth`,
-    subtext: remaining > 0 ? `${formatCompactMoney(remaining)} to unlock next tier` : 'Top Milestone Unlocked!',
-    pct,
-  };
+function calcBucketFill(amount = 0, target = 1000) {
+  const cleanAmt = Math.max(0, Number(amount) || 0);
+  const cleanTarget = Math.max(1, Number(target) || 1);
+  const exactPct = cleanAmt >= cleanTarget ? 100 : Math.round((cleanAmt / cleanTarget) * 100);
+  const visualFillPct = cleanAmt <= 0 ? 0 : Math.min(100, Math.max(10, exactPct));
+  const level = exactPct >= 100 ? 4 : exactPct >= 66 ? 3 : exactPct >= 33 ? 2 : 1;
+  return { exactPct, visualFillPct, level };
 }
 
 /**
@@ -118,7 +49,7 @@ function LiquidBucket({
   goalText,
   percentLabel,
   fillPct = 0,
-  theme = 'blue', // 'blue' | 'emerald' | 'amber' | 'shield'
+  theme = 'blue', // 'blue' | 'emerald' | 'amber' | 'shield' | 'cyan'
   replayKey = 0,
   onClick,
 }) {
@@ -133,6 +64,17 @@ function LiquidBucket({
       waveFront: '#38bdf8',
       waveBack: '#2563eb',
       glow: 'shadow-[0_0_20px_rgba(59,130,246,0.22)]',
+    },
+    cyan: {
+      border: 'border-cyan-500/30 hover:border-cyan-400/60',
+      vesselBorder: 'border-cyan-400/35',
+      titleColor: 'text-cyan-400',
+      amountColor: 'text-white',
+      pillBg: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30',
+      liquidGradient: 'from-cyan-600/95 via-teal-500/90 to-sky-300/90',
+      waveFront: '#22d3ee',
+      waveBack: '#0891b2',
+      glow: 'shadow-[0_0_20px_rgba(6,182,212,0.22)]',
     },
     emerald: {
       border: 'border-emerald-500/30 hover:border-emerald-400/60',
@@ -179,8 +121,8 @@ function LiquidBucket({
       onClick={onClick}
       className={`p-2.5 sm:p-3.5 rounded-2xl bg-zinc-950/85 border ${p.border} transition-colors cursor-pointer flex flex-col items-center text-center justify-between group w-full min-w-0`}
     >
-      {/* Top Level Badge */}
-      <span className={`text-[9px] sm:text-[10px] font-extrabold px-1.5 py-0.5 rounded-full border ${p.pillBg} mb-2 whitespace-nowrap`}>
+      {/* Top Level / Strategy Badge */}
+      <span className={`text-[9px] sm:text-[10px] font-extrabold px-1.5 py-0.5 rounded-full border ${p.pillBg} mb-2 whitespace-nowrap truncate max-w-full`}>
         {badgeText}
       </span>
 
@@ -188,13 +130,10 @@ function LiquidBucket({
       <div
         className={`relative w-14 h-20 sm:w-16 sm:h-24 rounded-b-2xl rounded-t-md border-2 ${p.vesselBorder} bg-zinc-900/80 overflow-hidden ${fillPct > 0 ? p.glow : ''}`}
       >
-        {/* Rim Highlight */}
         <div className="absolute top-0 inset-x-0 h-1 bg-white/15 z-20 pointer-events-none" />
-
-        {/* Left Glass Specular Reflection */}
         <div className="absolute left-1.5 top-2 bottom-2.5 w-1 rounded-full bg-white/15 z-20 pointer-events-none" />
 
-        {/* Right Beaker Graduation Ticks (75%, 50%, 25%) */}
+        {/* Right Beaker Graduation Ticks */}
         <div className="absolute right-1 inset-y-0 flex flex-col justify-evenly items-end py-2 z-20 pointer-events-none opacity-45">
           <span className="w-2 h-[1.5px] bg-zinc-300 rounded-full" />
           <span className="w-3 h-[1.5px] bg-zinc-200 rounded-full" />
@@ -209,7 +148,6 @@ function LiquidBucket({
           transition={{ type: 'spring', stiffness: 68, damping: 15, mass: 0.9 }}
           className={`absolute bottom-0 inset-x-0 bg-gradient-to-t ${p.liquidGradient}`}
         >
-          {/* Animated Dual SVG Sloshing Waves on Surface */}
           {fillPct > 0 && fillPct < 100 && (
             <div className="absolute -top-2.5 left-0 w-[200%] h-3 overflow-hidden pointer-events-none">
               <svg
@@ -235,7 +173,6 @@ function LiquidBucket({
             </div>
           )}
 
-          {/* Effervescent Rising Micro-Bubbles */}
           {fillPct >= 18 && (
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
               <span className="absolute bottom-1 left-3 w-1.5 h-1.5 rounded-full bg-white/50 bucket-bubble-1" />
@@ -245,7 +182,6 @@ function LiquidBucket({
           )}
         </motion.div>
 
-        {/* Center Percentage / Status Readout */}
         <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none">
           <span className="px-1.5 py-0.5 rounded-md bg-black/55 backdrop-blur-[2px] text-[10px] sm:text-[11px] font-black text-white tabular-nums shadow-sm">
             {percentLabel}
@@ -270,7 +206,8 @@ function LiquidBucket({
 }
 
 /**
- * Gamified Wealth Buckets Showcase (Cash Cushion • Investment Engine • Debt Drain)
+ * Circumstance-Adjusted Gamified Wealth Buckets.
+ * Buckets are NOT created until the user answers all 4 Goal Coach questions!
  */
 export default function WealthBuckets({
   totalCashInBank = 0,
@@ -278,6 +215,7 @@ export default function WealthBuckets({
   totalDebts = 0,
   totalCreditBalance = 0,
   totalNetWorth = 0,
+  totalVariable = 0,
   debts = [],
   linkedAccountsCount = 0,
   gameProfile,
@@ -285,6 +223,61 @@ export default function WealthBuckets({
 }) {
   const [replayKey, setReplayKey] = useState(0);
 
+  const unlocked = Boolean(gameProfile?.areBucketsUnlocked);
+  const blueprint = useMemo(() => computeFinancialBlueprint(gameProfile), [gameProfile]);
+
+  // Locked state BEFORE the user answers the 4 Goal Coach questions
+  if (!unlocked) {
+    const checklist = [
+      { label: '1. Main Goal', done: Boolean(gameProfile?.hasGoalAnswer) },
+      { label: '2. Income', done: (Number(gameProfile?.monthlyIncome) || 0) > 0 },
+      { label: '3. Monthly Bills', done: (Number(gameProfile?.monthlyFixedExpenses) || 0) > 0 },
+      { label: '4. Invest Style', done: Boolean(gameProfile?.riskProfile) },
+    ];
+    const completedCount = checklist.filter((c) => c.done).length;
+
+    return (
+      <div className="p-4 rounded-2xl bg-zinc-950/80 border border-dashed border-zinc-700/80 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-7 h-7 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0">
+              <Lock size={14} className="text-amber-400" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-extrabold text-white truncate">
+                Custom Buckets Locked ({completedCount}/4 Answered)
+              </p>
+              <p className="text-[11px] text-zinc-400 leading-snug">
+                Answer the Goal Coach questions above so your buckets are built around your exact goals, income & expenses.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+          {checklist.map((item) => (
+            <div
+              key={item.label}
+              className={`px-2.5 py-1.5 rounded-xl border text-[10px] font-bold flex items-center gap-1.5 ${
+                item.done
+                  ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                  : 'bg-zinc-900/70 border-zinc-800 text-zinc-500'
+              }`}
+            >
+              {item.done ? (
+                <CheckCircle2 size={11} className="text-emerald-400 shrink-0" />
+              ) : (
+                <span className="w-2.5 h-2.5 rounded-full border border-zinc-600 shrink-0" />
+              )}
+              <span className="truncate">{item.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // --- UNLOCKED: Build Buckets Directly From User's Goals & Circumstances ---
   const hasAnyData =
     linkedAccountsCount > 0 ||
     totalCashInBank > 0 ||
@@ -292,62 +285,141 @@ export default function WealthBuckets({
     totalDebts > 0 ||
     debts.length > 0;
 
-  const customCashGoal = gameProfile?.isCustomized ? Number(gameProfile.cashBucketTarget) || 0 : 0;
-  const customInvestGoal = gameProfile?.isCustomized ? Number(gameProfile.investBucketTarget) || 0 : 0;
-  const customNetWorthGoal = gameProfile?.isCustomized ? Number(gameProfile.netWorthTarget) || 0 : 0;
-  const customDebtStart = gameProfile?.isCustomized ? Number(gameProfile.debtPayoffTarget) || 0 : 0;
+  const cashTarget = Math.max(500, Number(gameProfile?.cashBucketTarget) || 1000);
+  const investTarget = Math.max(500, Number(gameProfile?.investBucketTarget) || 1200);
+  const netWorthTarget = Math.max(1000, Number(gameProfile?.netWorthTarget) || cashTarget + investTarget);
+  const monthlyExpenses = Math.max(100, Number(gameProfile?.monthlyFixedExpenses) || 1000);
 
-  // 1. Cash Bucket Progress
-  const cashMilestones = buildGoalMilestones(customCashGoal, [1000, 3000, 10000, 25000, 50000, 100000]);
-  const cashMeta = getTierProgress(totalCashInBank, cashMilestones, customCashGoal);
+  // Bucket 1: User's Tailored Cash / Savings Goal Bucket
+  const cashFill = calcBucketFill(totalCashInBank, cashTarget);
+  const cashShortTitle = gameProfile?.primaryGoalName
+    ? gameProfile.primaryGoalName.split(' ').slice(0, 2).join(' ')
+    : 'Cash Goal';
+  const cashSubtext =
+    blueprint?.savingsDollar > 0
+      ? `+${formatCompactMoney(blueprint.savingsDollar)}/mo · ${formatGoalShort(cashTarget)}`
+      : `Target: ${formatGoalShort(cashTarget)}`;
 
-  // 2. Investments Bucket Progress
-  const investMilestones = buildGoalMilestones(customInvestGoal, [1000, 5000, 10000, 25000, 50000, 100000, 250000]);
-  const investMeta = getTierProgress(totalPortfolioValue, investMilestones, customInvestGoal);
+  // Bucket 2: User's Tailored Investment Engine Bucket
+  const investFill = calcBucketFill(totalPortfolioValue, investTarget);
+  const investBadge = blueprint?.portfolioShortTag || `Lv.${investFill.level} Invest`;
+  const investSubtext =
+    blueprint?.investDollar > 0
+      ? `+${formatCompactMoney(blueprint.investDollar)}/mo · ${formatGoalShort(investTarget)}`
+      : `Target: ${formatGoalShort(investTarget)}`;
 
-  // 3. Debt Crusher Tank Progress
-  // When Debt > 0, tank shows amber lava proportional to debt burden (drains to 0% as you pay off!).
-  // When accounts are linked & Debt === 0, tank celebrates 100% Debt-Free Shield!
-  const originalDebtSum = Math.max(
-    customDebtStart,
-    debts.reduce((sum, d) => sum + (Number(d.principal || d.originalBalance || d.balance) || 0), 0) +
-      totalCreditBalance,
-  );
-  const totalAssets = totalCashInBank + totalPortfolioValue;
-  const debtCeiling = Math.max(originalDebtSum, totalAssets, totalDebts, 1000);
+  // Bucket 3: Circumstance-Adaptive Bucket!
+  // A) Has Debt or Debt Crusher Focus -> Debt Paydown Tank
+  // B) Zero Debt & Specific Non-Emergency Goal (e.g. House/Trip/Wedding) -> 3-Mo Emergency Runway Bucket
+  // C) Zero Debt & Primary Bucket IS Emergency Runway -> Monthly Living Surplus Bucket
+  const hasDebtCircumstance =
+    totalDebts > 0 ||
+    (Number(gameProfile?.debtPayoffTarget) || 0) > 0 ||
+    gameProfile?.focusMode === 'debt_crusher';
 
-  const isVerifiedDebtFree = hasAnyData && totalDebts === 0;
-  const debtLavaPct =
-    totalDebts > 0
-      ? Math.min(92, Math.max(14, Math.round((totalDebts / debtCeiling) * 100)))
-      : isVerifiedDebtFree
-      ? 100
-      : 0;
+  const isPrimaryGoalNonEmergency =
+    Boolean(gameProfile?.primaryGoalName) &&
+    !/\b(emergency|runway|buffer|cushion|safety)\b/i.test(gameProfile.primaryGoalName);
 
-  const debtPaidOffPct =
-    originalDebtSum > totalDebts && originalDebtSum > 0
-      ? Math.round(((originalDebtSum - totalDebts) / originalDebtSum) * 100)
-      : null;
+  let thirdBucketProps;
 
-  // 4. Overall Net Worth Milestone Bar
-  const nwMilestone = getNetWorthMilestone(totalNetWorth, hasAnyData, customNetWorthGoal);
+  if (hasDebtCircumstance) {
+    const customDebtStart = Number(gameProfile?.debtPayoffTarget) || 0;
+    const originalDebtSum = Math.max(
+      customDebtStart,
+      debts.reduce((sum, d) => sum + (Number(d.principal || d.originalBalance || d.balance) || 0), 0) +
+        totalCreditBalance,
+    );
+    const debtCeiling = Math.max(originalDebtSum, totalCashInBank + totalPortfolioValue, totalDebts, 1000);
+    const isVerifiedDebtFree = hasAnyData && totalDebts === 0;
+    const debtLavaPct =
+      totalDebts > 0
+        ? Math.min(92, Math.max(14, Math.round((totalDebts / debtCeiling) * 100)))
+        : isVerifiedDebtFree
+        ? 100
+        : 0;
+    const monthlyDebtPower = Math.max(blueprint?.debtDollar || 0, Math.round((blueprint?.surplus || 0) * 0.5));
+    const monthsLeft =
+      totalDebts > 0 && monthlyDebtPower > 0 ? Math.ceil(totalDebts / monthlyDebtPower) : null;
 
-  const cashShortTitle =
-    gameProfile?.isCustomized && gameProfile?.primaryGoalName
-      ? gameProfile.primaryGoalName.split(' ').slice(0, 2).join(' ')
-      : 'Cash Bucket';
+    thirdBucketProps = {
+      title: isVerifiedDebtFree ? 'Debt Shield' : 'Debt Payoff',
+      amountText: totalDebts > 0 ? `-${formatCompactMoney(totalDebts)}` : '$0.00',
+      badgeText: isVerifiedDebtFree ? (
+        <span className="inline-flex items-center gap-0.5">
+          <ShieldCheck size={10} /> Clean
+        </span>
+      ) : (
+        <span className="inline-flex items-center gap-0.5">
+          <Flame size={10} /> Crush
+        </span>
+      ),
+      goalText: isVerifiedDebtFree
+        ? '100% Debt-Free!'
+        : monthsLeft
+        ? `~${monthsLeft} mo at ${formatCompactMoney(monthlyDebtPower)}/mo`
+        : 'Drain to $0',
+      percentLabel: isVerifiedDebtFree ? 'FREE' : totalDebts > 0 ? `${debtLavaPct}%` : '0%',
+      fillPct: debtLavaPct,
+      theme: isVerifiedDebtFree ? 'shield' : 'amber',
+      metricKey: 'debts',
+    };
+  } else if (isPrimaryGoalNonEmergency) {
+    // 3-Month Emergency Safety Net alongside their House / Trip / Wedding goal
+    const emergencyTarget = Math.max(1500, Math.round((monthlyExpenses * 3) / 100) * 100);
+    const emergFill = calcBucketFill(totalCashInBank, emergencyTarget);
+    thirdBucketProps = {
+      title: '3-Mo Safety',
+      amountText: formatCompactMoney(totalCashInBank),
+      badgeText: 'Safety Net',
+      goalText: `3x Bills (${formatGoalShort(emergencyTarget)})`,
+      percentLabel: `${emergFill.exactPct}%`,
+      fillPct: emergFill.visualFillPct,
+      theme: 'cyan',
+      metricKey: 'goal_cushion',
+    };
+  } else {
+    // Debt-free & Emergency Runway already in Bucket 1 -> Monthly Cash Surplus Bucket!
+    const targetSurplus = Math.max(200, blueprint?.surplus || Math.round(monthlyExpenses * 0.25));
+    const liveUnspentSurplus = Math.max(0, (Number(gameProfile?.monthlyIncome) || 0) - totalVariable);
+    const cappedSurplus = hasAnyData ? Math.min(targetSurplus, liveUnspentSurplus) : 0;
+    const surplusFill = calcBucketFill(cappedSurplus, targetSurplus);
+    thirdBucketProps = {
+      title: 'Mo. Surplus',
+      amountText: formatCompactMoney(cappedSurplus),
+      badgeText: 'Cash Flow',
+      goalText: `Target: ${formatGoalShort(targetSurplus)}/mo`,
+      percentLabel: `${surplusFill.exactPct}%`,
+      fillPct: surplusFill.visualFillPct,
+      theme: 'cyan',
+      metricKey: 'sim_waterfall',
+    };
+  }
+
+  // Custom Net Worth Milestone Bar
+  const nwPct =
+    totalNetWorth <= 0
+      ? totalNetWorth < 0
+        ? 10
+        : 0
+      : Math.min(100, Math.max(4, Math.round((totalNetWorth / netWorthTarget) * 100)));
+  const nwRemaining = Math.max(0, netWorthTarget - Math.max(0, totalNetWorth));
 
   return (
     <div className="space-y-3.5">
-      {/* Gamified Net Worth XP / Milestone Bar */}
+      {/* Circumstance-Adjusted Net Worth Milestone Bar */}
       <div className="p-3 rounded-2xl bg-zinc-950/75 border border-zinc-800/90 space-y-1.5">
         <div className="flex items-center justify-between gap-2 text-[10px] sm:text-[11px]">
           <span className="font-extrabold text-emerald-400 flex items-center gap-1.5 truncate">
             <Sparkles size={12} className="text-yellow-400 shrink-0" />
-            <span className="truncate">{nwMilestone.label}</span>
+            <span className="truncate">
+              {totalNetWorth < 0
+                ? 'Quest: Positive Net Worth ($0)'
+                : `Custom Net Worth Target: ${formatGoalShort(netWorthTarget)}`}
+            </span>
           </span>
           <div className="flex items-center gap-2 shrink-0">
-            <span className="font-mono font-bold text-zinc-200">{nwMilestone.pct}%</span>
+            <span className="font-mono font-bold text-zinc-200">{nwPct}%</span>
             <button
               type="button"
               onClick={() => setReplayKey((k) => k + 1)}
@@ -362,92 +434,71 @@ export default function WealthBuckets({
 
         <div className="relative w-full h-2.5 rounded-full bg-zinc-900 border border-zinc-800 overflow-hidden">
           <motion.div
-            key={`nw-${replayKey}-${nwMilestone.pct}`}
+            key={`nw-${replayKey}-${nwPct}-${netWorthTarget}`}
             initial={{ width: '0%' }}
-            animate={{ width: `${nwMilestone.pct}%` }}
+            animate={{ width: `${nwPct}%` }}
             transition={{ duration: 1, ease: 'easeOut' }}
             className="relative h-full rounded-full bg-gradient-to-r from-blue-500 via-emerald-400 to-teal-300 overflow-hidden"
           >
-            {nwMilestone.pct > 0 && (
+            {nwPct > 0 && (
               <div className="absolute inset-y-0 w-1/2 bg-gradient-to-r from-transparent via-white/35 to-transparent xp-bar-shimmer" />
             )}
           </motion.div>
         </div>
 
         <div className="flex items-center justify-between text-[10px] text-zinc-400">
-          <span className="truncate">{nwMilestone.subtext}</span>
+          <span className="truncate">
+            {totalNetWorth < 0
+              ? `${formatCompactMoney(Math.abs(totalNetWorth))} away from break-even`
+              : nwRemaining > 0
+              ? `${formatCompactMoney(nwRemaining)} to reach your ${formatGoalShort(netWorthTarget)} target`
+              : 'Custom Net Worth Target Reached!'}
+          </span>
           <span className="text-zinc-500 shrink-0">Tap any bucket</span>
         </div>
       </div>
 
-      {/* 3 Symmetrical Animated Liquid Buckets */}
+      {/* 3 Circumstance-Calibrated Animated Liquid Buckets */}
       <div className="grid grid-cols-3 gap-2 sm:gap-3">
-        {/* Bucket 1: Cash Cushion */}
+        {/* Bucket 1: Custom Cash / Primary Goal Bucket */}
         <LiquidBucket
           title={cashShortTitle}
           amountText={formatCompactMoney(totalCashInBank)}
-          badgeText={`Lv.${cashMeta.level} Cash`}
-          goalText={`Goal: ${formatGoalShort(cashMeta.target)}`}
-          percentLabel={`${cashMeta.exactPct}%`}
-          fillPct={cashMeta.visualFillPct}
+          badgeText={`Lv.${cashFill.level} Cash`}
+          goalText={cashSubtext}
+          percentLabel={`${cashFill.exactPct}%`}
+          fillPct={cashFill.visualFillPct}
           theme="blue"
-          replayKey={`${replayKey}-${cashMeta.target}`}
+          replayKey={`${replayKey}-${cashTarget}`}
           onClick={() => onSelectMetric?.('cash')}
         />
 
-        {/* Bucket 2: Investments Engine */}
+        {/* Bucket 2: Custom Investment Bucket */}
         <LiquidBucket
-          title="Invest Bucket"
+          title="Invest Plan"
           amountText={formatCompactMoney(totalPortfolioValue)}
-          badgeText={`Lv.${investMeta.level} Growth`}
-          goalText={`Goal: ${formatGoalShort(investMeta.target)}`}
-          percentLabel={`${investMeta.exactPct}%`}
-          fillPct={investMeta.visualFillPct}
+          badgeText={investBadge}
+          goalText={investSubtext}
+          percentLabel={`${investFill.exactPct}%`}
+          fillPct={investFill.visualFillPct}
           theme="emerald"
-          replayKey={`${replayKey}-${investMeta.target}`}
+          replayKey={`${replayKey}-${investTarget}`}
           onClick={() => onSelectMetric?.('investments')}
         />
 
-        {/* Bucket 3: Debt Crusher Tank */}
+        {/* Bucket 3: Circumstance-Adaptive Bucket (Debt Tank / 3-Mo Safety / Monthly Surplus) */}
         <LiquidBucket
-          title={isVerifiedDebtFree ? 'Debt Shield' : 'Debt Tank'}
-          amountText={totalDebts > 0 ? `-${formatCompactMoney(totalDebts)}` : '$0.00'}
-          badgeText={
-            isVerifiedDebtFree ? (
-              <span className="inline-flex items-center gap-0.5">
-                <ShieldCheck size={10} /> Clean
-              </span>
-            ) : totalDebts > 0 ? (
-              <span className="inline-flex items-center gap-0.5">
-                <Flame size={10} /> Crush
-              </span>
-            ) : (
-              'Debt $0'
-            )
-          }
-          goalText={
-            isVerifiedDebtFree
-              ? '100% Debt-Free!'
-              : totalDebts > 0
-              ? debtPaidOffPct !== null
-                ? `${debtPaidOffPct}% Crushed`
-                : 'Drain to $0'
-              : 'Target: $0 Owed'
-          }
-          percentLabel={
-            isVerifiedDebtFree
-              ? 'FREE'
-              : totalDebts > 0
-              ? `${debtLavaPct}%`
-              : '0%'
-          }
-          fillPct={debtLavaPct}
-          theme={isVerifiedDebtFree ? 'shield' : 'amber'}
-          replayKey={replayKey}
-          onClick={() => onSelectMetric?.('debts')}
+          title={thirdBucketProps.title}
+          amountText={thirdBucketProps.amountText}
+          badgeText={thirdBucketProps.badgeText}
+          goalText={thirdBucketProps.goalText}
+          percentLabel={thirdBucketProps.percentLabel}
+          fillPct={thirdBucketProps.fillPct}
+          theme={thirdBucketProps.theme}
+          replayKey={`${replayKey}-${thirdBucketProps.title}`}
+          onClick={() => onSelectMetric?.(thirdBucketProps.metricKey)}
         />
       </div>
     </div>
   );
 }
-
