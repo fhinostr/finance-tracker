@@ -298,6 +298,30 @@ function PersonalFinanceTracker({ activeUser, onPlaidFlowChange, onLockApp }) {
     setLinkedAccounts(getStoredAccounts());
   };
 
+  const handleApplyCoachBlueprint = (blueprint) => {
+    if (!blueprint) return;
+    if (blueprint.suggestedBudgets) {
+      setAllBudgets(blueprint.suggestedBudgets);
+    }
+    if (blueprint.income > 0) {
+      // Remove any previous coach-applied monthly income entry before adding the updated one
+      const prevCoachIncome = entries.find((e) => e.id === 'coach_monthly_income');
+      if (prevCoachIncome) {
+        removeEntry('coach_monthly_income');
+      }
+      addEntry({
+        id: 'coach_monthly_income',
+        kind: 'income',
+        name: 'Monthly Take-Home Pay (Coach Plan)',
+        amount: blueprint.income,
+        category: 'Income',
+        frequency: 'monthly',
+      });
+    }
+    setSyncToast(`✓ Applied ${formatMoney(blueprint.income)}/mo income & suggested budgets to your tracker!`);
+    setTimeout(() => setSyncToast(''), 4500);
+  };
+
   // --- Calculations (Discretized per Month) ---
   const {
     bonusNet,
@@ -709,6 +733,7 @@ function PersonalFinanceTracker({ activeUser, onPlaidFlowChange, onLockApp }) {
                 activeMonth={activeMonth}
                 gameProfile={gameProfile}
                 onProfileChange={setGameProfile}
+                onApplyBlueprint={handleApplyCoachBlueprint}
                 onNavigateTab={setActiveTab}
                 onOpenLink={() => {
                   setLinkedAccounts(getStoredAccounts());
@@ -909,6 +934,7 @@ function DashboardTab({
   activeMonth: _activeMonth,
   gameProfile,
   onProfileChange,
+  onApplyBlueprint,
   onNavigateTab,
   onOpenLink,
   onOpenSync,
@@ -969,6 +995,7 @@ function DashboardTab({
   const relocationTarget = Math.max(500, Number(gameProfile?.primaryGoalTarget) || 3000);
   const primaryGoalTitle = gameProfile?.primaryGoalName || 'Move Cushion Goal';
   const relocationPct = Math.min(100, Math.round((relocationSaved / relocationTarget) * 100));
+  const effectiveNetIncome = _currentNet > 0 ? _currentNet : Number(gameProfile?.monthlyIncome) || 0;
 
   return (
     <div className="space-y-6">
@@ -1047,6 +1074,7 @@ function DashboardTab({
           variant="dashboard"
           gameProfile={gameProfile}
           onProfileChange={onProfileChange}
+          onApplyBlueprint={onApplyBlueprint}
         />
 
         {/* Informational banner when no accounts are connected */}
@@ -1077,7 +1105,7 @@ function DashboardTab({
           totalPortfolioValue,
           totalNetWorth,
           totalVariable,
-          actualNetIncome: _currentNet || 0,
+          actualNetIncome: effectiveNetIncome,
           relocationSaved,
           debts,
           linkedAccountsCount: linkedAccounts.length,
@@ -1242,7 +1270,7 @@ function DashboardTab({
                   </span>
                 </div>
                 <div className="text-2xl font-black text-indigo-400">
-                  {_currentNet > 0 ? `${formatMoney(_currentNet)}/mo` : '$0.00'}
+                  {effectiveNetIncome > 0 ? `${formatMoney(effectiveNetIncome)}/mo` : '$0.00'}
                 </div>
               </div>
               <p className="text-[11px] text-zinc-400 mt-2">
@@ -1416,7 +1444,7 @@ function DashboardTab({
           relocationSaved,
           relocationTarget,
           primaryGoalName: primaryGoalTitle,
-          actualNetIncome: _currentNet || 0,
+          actualNetIncome: effectiveNetIncome,
           vehicleLoanBalance: debts.find(d => (d.name||'').toLowerCase().includes('car') || (d.name||'').toLowerCase().includes('kia') || (d.name||'').toLowerCase().includes('loan'))?.balance || 0,
         }}
         onNavigateTab={onNavigateTab}
