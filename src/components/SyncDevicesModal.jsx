@@ -186,33 +186,33 @@ export default function SyncDevicesModal({ isOpen, onClose, onDataRestored }) {
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex bg-white/5 p-1 rounded-2xl border border-white/10 text-xs">
+        <div className="grid grid-cols-3 gap-1 bg-white/5 p-1 rounded-2xl border border-white/10 text-xs">
           <button
             onClick={() => setActiveTab('qr')}
-            className={`flex-1 py-1.5 px-2 rounded-xl font-medium transition-all flex items-center justify-center gap-1.5 ${
+            className={`py-1.5 px-2 rounded-xl font-medium transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${
               activeTab === 'qr' ? 'bg-white/20 text-white font-bold shadow-sm' : 'text-gray-400 hover:text-white'
             }`}
           >
-            <QrCode size={13} />
+            <QrCode size={13} className="shrink-0" />
             <span>Scan QR</span>
           </button>
           <button
             onClick={() => setActiveTab('code')}
-            className={`flex-1 py-1.5 px-2 rounded-xl font-medium transition-all flex items-center justify-center gap-1.5 ${
+            className={`py-1.5 px-2 rounded-xl font-medium transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${
               activeTab === 'code' ? 'bg-white/20 text-white font-bold shadow-sm' : 'text-gray-400 hover:text-white'
             }`}
           >
-            <Key size={13} />
+            <Key size={13} className="shrink-0" />
             <span>Sync Key</span>
           </button>
           <button
             onClick={() => setActiveTab('backup')}
-            className={`flex-1 py-1.5 px-2 rounded-xl font-medium transition-all flex items-center justify-center gap-1.5 ${
+            className={`py-1.5 px-2 rounded-xl font-medium transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${
               activeTab === 'backup' ? 'bg-white/20 text-white font-bold shadow-sm' : 'text-gray-400 hover:text-white'
             }`}
           >
-            <Download size={13} />
-            <span>File Backup</span>
+            <Download size={13} className="shrink-0" />
+            <span>Backup</span>
           </button>
         </div>
 
@@ -247,17 +247,17 @@ export default function SyncDevicesModal({ isOpen, onClose, onDataRestored }) {
             <div className="space-y-2 pt-1">
               <button
                 onClick={handleCopy}
-                className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 font-bold text-xs text-white flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 active:scale-95 transition-all"
+                className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 font-bold text-xs text-white flex items-center justify-center gap-2 text-center shadow-lg shadow-emerald-600/20 active:scale-95 transition-all"
               >
                 {copied ? (
                   <>
-                    <Check size={16} className="text-white" />
-                    <span>Sync Link Copied to Clipboard!</span>
+                    <Check size={15} className="text-white shrink-0" />
+                    <span>Sync Link Copied!</span>
                   </>
                 ) : (
                   <>
-                    <Copy size={16} />
-                    <span>Copy Sync Link (Send via Messages / AirDrop)</span>
+                    <Copy size={15} className="shrink-0" />
+                    <span>Copy Sync Link</span>
                   </>
                 )}
               </button>

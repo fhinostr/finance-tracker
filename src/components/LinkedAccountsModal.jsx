@@ -587,7 +587,7 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
         transition={{ type: 'spring', stiffness: 320, damping: 34 }}
-        className="relative w-full max-w-lg max-h-[84vh] sm:max-h-[88vh] overflow-y-auto rounded-t-[32px] sm:rounded-[32px] bg-zinc-900/95 backdrop-blur-2xl border border-white/15 shadow-2xl p-6"
+        className="relative w-full max-w-lg max-h-[84vh] sm:max-h-[88vh] overflow-y-auto rounded-t-[32px] sm:rounded-[32px] bg-zinc-900/95 backdrop-blur-2xl border border-white/15 shadow-2xl p-4 sm:p-6 pb-8"
       >
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-white/10">
@@ -635,26 +635,26 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
 
         {/* Connected Accounts List */}
         <div className="mt-5 space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-xs uppercase tracking-wider font-semibold text-gray-400">
               Connected Accounts {accounts.length > 0 ? `(${accounts.length})` : ''}
             </h3>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 shrink-0">
               <button
                 type="button"
                 onClick={() => setShowManualForm(!showManualForm)}
-                className="flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300 font-semibold px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 active:scale-95 transition-all border border-emerald-500/20"
+                className="flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300 font-semibold px-2.5 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 active:scale-95 transition-all border border-emerald-500/20 whitespace-nowrap shrink-0 cursor-pointer"
               >
-                <Plus size={13} />
-                <span>{showManualForm ? 'Close' : 'Add Manually'}</span>
+                <Plus size={13} className="shrink-0" />
+                <span>{showManualForm ? 'Close' : 'Add Manual'}</span>
               </button>
               {accounts.length > 0 && (
                 <button
                   onClick={syncAllAccounts}
                   disabled={isSyncingAll}
-                  className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 font-medium px-2.5 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 active:scale-95 transition-all"
+                  className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 font-semibold px-2.5 py-1.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 active:scale-95 transition-all whitespace-nowrap shrink-0 cursor-pointer"
                 >
-                  <RefreshCw size={13} className={isSyncingAll ? 'animate-spin' : ''} />
+                  <RefreshCw size={13} className={`shrink-0 ${isSyncingAll ? 'animate-spin' : ''}`} />
                   <span>{isSyncingAll ? 'Syncing...' : 'Sync All'}</span>
                 </button>
               )}
@@ -671,57 +671,57 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
                 onSubmit={handleAddManualAccount}
                 className="p-4 rounded-2xl bg-white/5 border border-emerald-500/30 space-y-3 overflow-hidden"
               >
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-1">
                   <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
-                    <Plus size={14} /> Add Account / Set Balances
+                    <Plus size={14} className="shrink-0" /> Add Account Manually
                   </span>
-                  <span className="text-[10px] text-gray-400">Directly syncs to live dashboard</span>
+                  <span className="text-[10px] text-gray-400">Syncs live to dashboard</span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => setManualType('bank')}
-                    className={`py-1.5 px-2 rounded-xl text-xs font-medium border flex items-center justify-center gap-1.5 transition-all ${
+                    className={`py-2 px-2.5 rounded-xl text-xs font-semibold border flex items-center justify-center gap-1.5 whitespace-nowrap transition-all cursor-pointer ${
                       manualType === 'bank'
                         ? 'bg-blue-500/20 border-blue-500 text-blue-300'
                         : 'bg-black/20 border-white/10 text-gray-400'
                     }`}
                   >
-                    <Building2 size={13} /> Checking
+                    <Building2 size={13} className="shrink-0" /> Checking
                   </button>
                   <button
                     type="button"
                     onClick={() => setManualType('savings')}
-                    className={`py-1.5 px-2 rounded-xl text-xs font-medium border flex items-center justify-center gap-1.5 transition-all ${
+                    className={`py-2 px-2.5 rounded-xl text-xs font-semibold border flex items-center justify-center gap-1.5 whitespace-nowrap transition-all cursor-pointer ${
                       manualType === 'savings'
                         ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300'
                         : 'bg-black/20 border-white/10 text-gray-400'
                     }`}
                   >
-                    <PiggyBank size={13} /> Savings / HYSA
+                    <PiggyBank size={13} className="shrink-0" /> Savings
                   </button>
                   <button
                     type="button"
                     onClick={() => setManualType('credit')}
-                    className={`py-1.5 px-2 rounded-xl text-xs font-medium border flex items-center justify-center gap-1.5 transition-all ${
+                    className={`py-2 px-2.5 rounded-xl text-xs font-semibold border flex items-center justify-center gap-1.5 whitespace-nowrap transition-all cursor-pointer ${
                       manualType === 'credit'
                         ? 'bg-amber-500/20 border-amber-500 text-amber-300'
                         : 'bg-black/20 border-white/10 text-gray-400'
                     }`}
                   >
-                    <CreditCard size={13} /> Credit Card
+                    <CreditCard size={13} className="shrink-0" /> Credit Card
                   </button>
                   <button
                     type="button"
                     onClick={() => setManualType('investment')}
-                    className={`py-1.5 px-2 rounded-xl text-xs font-medium border flex items-center justify-center gap-1.5 transition-all ${
+                    className={`py-2 px-2.5 rounded-xl text-xs font-semibold border flex items-center justify-center gap-1.5 whitespace-nowrap transition-all cursor-pointer ${
                       manualType === 'investment'
                         ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
                         : 'bg-black/20 border-white/10 text-gray-400'
                     }`}
                   >
-                    <TrendingUp size={13} /> Robinhood
+                    <TrendingUp size={13} className="shrink-0" /> Investing
                   </button>
                 </div>
 
@@ -882,9 +882,9 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
                         </button>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-2 mt-0.5">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
                         <p className="text-xs text-gray-400">
-                          {acc.type === 'credit' ? 'Balance Owed (Debt): ' : 'Balance: '}
+                          {acc.type === 'credit' ? 'Owed: ' : 'Balance: '}
                           <span className={acc.type === 'credit' ? 'text-amber-300 font-semibold' : 'text-white font-medium'}>
                             {acc.type === 'credit' ? `-${formatMoney(acc.balance)}` : formatMoney(acc.balance)}
                           </span>
@@ -896,11 +896,11 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
                             setEditBalanceVal(String(acc.balance));
                           }}
                           title="Edit balance"
-                          className="text-gray-500 hover:text-emerald-400 transition-colors"
+                          className="text-gray-500 hover:text-emerald-400 transition-colors shrink-0"
                         >
                           <Edit2 size={11} />
                         </button>
-                        <span className="text-[10px] text-gray-500">· {acc.lastSynced}</span>
+                        <span className="text-[10px] text-gray-500 whitespace-nowrap">· {acc.lastSynced}</span>
                       </div>
                     )}
                   </div>
@@ -945,21 +945,23 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
           </div>
 
           <div className="space-y-2.5 text-xs">
-            {/* 1. Relocation Buffer */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 p-2.5 rounded-xl bg-zinc-900 border border-zinc-800">
-              <div className="flex items-center gap-2">
+            {/* 1. Primary Savings Goal Account */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-zinc-900 border border-zinc-800">
+              <div className="flex items-center gap-2 min-w-0">
                 <Compass size={16} className="text-cyan-400 shrink-0" />
-                <div>
-                  <span className="font-semibold text-white block">Relocation Buffer ($3,000)</span>
-                  <span className="text-[10px] text-zinc-400">Phase 1 priority destination</span>
+                <div className="min-w-0">
+                  <span className="font-semibold text-white block truncate">
+                    {gameProfile?.primaryGoalName || 'Primary Savings Goal'}
+                  </span>
+                  <span className="text-[10px] text-zinc-400 block truncate">Goal savings destination</span>
                 </div>
               </div>
               <select
                 value={goalMapping.relocationAccountId || ''}
                 onChange={(e) => handleGoalMappingChange('relocationAccountId', e.target.value)}
-                className="px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-700 text-xs text-white focus:border-cyan-400 focus:outline-none"
+                className="w-full sm:w-52 max-w-full truncate px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-700 text-xs text-white focus:border-cyan-400 focus:outline-none"
               >
-                <option value="">Default Relocation Buffer</option>
+                <option value="">Auto-Select Savings</option>
                 {accounts.filter(a => a.type !== 'credit').map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name} ({a.mask ? `••••${a.mask}` : formatMoney(a.balance)})
@@ -968,19 +970,19 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
               </select>
             </div>
 
-            {/* 2. Car Loan Payoff */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 p-2.5 rounded-xl bg-zinc-900 border border-zinc-800">
-              <div className="flex items-center gap-2">
+            {/* 2. Debt Payoff Account */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-zinc-900 border border-zinc-800">
+              <div className="flex items-center gap-2 min-w-0">
                 <Car size={16} className="text-amber-400 shrink-0" />
-                <div>
-                  <span className="font-semibold text-white block">Kia Loan Payoff Account</span>
-                  <span className="text-[10px] text-zinc-400">Phase 2 source/paydown account</span>
+                <div className="min-w-0">
+                  <span className="font-semibold text-white block truncate">Debt Paydown Account</span>
+                  <span className="text-[10px] text-zinc-400 block truncate">Source for loan/card payments</span>
                 </div>
               </div>
               <select
                 value={goalMapping.carPayoffAccountId || ''}
                 onChange={(e) => handleGoalMappingChange('carPayoffAccountId', e.target.value)}
-                className="px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-700 text-xs text-white focus:border-amber-400 focus:outline-none"
+                className="w-full sm:w-52 max-w-full truncate px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-700 text-xs text-white focus:border-amber-400 focus:outline-none"
               >
                 <option value="">Default Checking Account</option>
                 {accounts.map((a) => (
@@ -992,18 +994,18 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
             </div>
 
             {/* 3. Emergency & Surplus */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 p-2.5 rounded-xl bg-zinc-900 border border-zinc-800">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-zinc-900 border border-zinc-800">
+              <div className="flex items-center gap-2 min-w-0">
                 <ShieldCheck size={16} className="text-emerald-400 shrink-0" />
-                <div>
-                  <span className="font-semibold text-white block">Emergency & Surplus Reserve</span>
-                  <span className="text-[10px] text-zinc-400">Destination once $3k cap is met</span>
+                <div className="min-w-0">
+                  <span className="font-semibold text-white block truncate">Emergency & Surplus Reserve</span>
+                  <span className="text-[10px] text-zinc-400 block truncate">Overflow cash reserve</span>
                 </div>
               </div>
               <select
                 value={goalMapping.emergencyAccountId || ''}
                 onChange={(e) => handleGoalMappingChange('emergencyAccountId', e.target.value)}
-                className="px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-700 text-xs text-white focus:border-emerald-400 focus:outline-none"
+                className="w-full sm:w-52 max-w-full truncate px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-700 text-xs text-white focus:border-emerald-400 focus:outline-none"
               >
                 <option value="">Default Savings Reserve</option>
                 {accounts.filter(a => a.type !== 'credit').map((a) => (
@@ -1032,17 +1034,19 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
               <button
                 onClick={() => launchPlaid('bank')}
                 disabled={loading}
-                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-400 hover:to-indigo-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25 active:scale-[0.98] transition-transform"
+                className="w-full px-4 py-3.5 rounded-2xl bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-400 hover:to-indigo-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 text-center leading-snug shadow-lg shadow-blue-500/25 active:scale-[0.98] transition-transform cursor-pointer"
               >
-                <Building2 size={18} /> Connect Bank Account (Checking, Savings, Cards)
+                <Building2 size={17} className="shrink-0" />
+                <span>Connect Bank & Credit Cards</span>
               </button>
 
               <button
                 onClick={() => launchPlaid('investment')}
                 disabled={loading}
-                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 active:scale-[0.98] transition-transform"
+                className="w-full px-4 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 text-center leading-snug shadow-lg shadow-emerald-500/25 active:scale-[0.98] transition-transform cursor-pointer"
               >
-                <TrendingUp size={18} /> Connect Robinhood Portfolio
+                <TrendingUp size={17} className="shrink-0" />
+                <span>Connect Investments & Robinhood</span>
               </button>
 
               {/* Troubleshooting Card for 'Couldn't connect to your institution' */}
@@ -1050,13 +1054,13 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
                 <button
                   type="button"
                   onClick={() => setShowPlaidTroubleshoot(!showPlaidTroubleshoot)}
-                  className="w-full flex items-center justify-between text-xs text-gray-300 hover:text-white font-medium"
+                  className="w-full flex items-center justify-between gap-2 text-left text-xs text-gray-300 hover:text-white font-medium cursor-pointer"
                 >
-                  <div className="flex items-center gap-1.5 text-amber-400">
-                    <AlertCircle size={14} />
-                    <span>Plaid says &quot;Couldn&apos;t connect to your institution&quot;?</span>
+                  <div className="flex items-center gap-1.5 text-amber-400 min-w-0">
+                    <AlertCircle size={14} className="shrink-0" />
+                    <span className="truncate">Trouble connecting your bank?</span>
                   </div>
-                  {showPlaidTroubleshoot ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  {showPlaidTroubleshoot ? <ChevronUp size={14} className="shrink-0" /> : <ChevronDown size={14} className="shrink-0" />}
                 </button>
                 {showPlaidTroubleshoot && (
                   <div className="text-[11px] text-gray-400 space-y-2 pt-2 border-t border-white/5 leading-relaxed">
@@ -1099,39 +1103,40 @@ export default function LinkedAccountsModal({ onClose, onSyncTransactions, onUpd
             <div className="space-y-2">
               <button
                 onClick={() => setShowKeySettings(true)}
-                className="w-full py-3.5 rounded-2xl bg-blue-500 hover:bg-blue-400 text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-transform"
+                className="w-full px-4 py-3.5 rounded-2xl bg-blue-500 hover:bg-blue-400 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 text-center shadow-lg active:scale-[0.98] transition-transform cursor-pointer"
               >
-                <KeyRound size={17} /> Enter Plaid Keys to Connect Live Accounts
+                <KeyRound size={16} className="shrink-0" />
+                <span>Configure Plaid Keys</span>
               </button>
             </div>
           )}
 
           {/* Plaid API Keys Setup Panel */}
           <div className="mt-4 rounded-2xl bg-white/5 border border-white/10 overflow-hidden">
-            <div className="p-3.5 flex items-center justify-between text-xs font-semibold">
-              <div className="flex items-center gap-2">
+            <div className="p-3.5 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold">
+              <div className="flex items-center gap-2 min-w-0">
                 {plaidClientId?.trim() && plaidSecret?.trim() ? (
                   <>
-                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                    <span className="text-emerald-400 font-bold">Plaid API Configured & Saved</span>
-                    <span className="text-[10px] text-gray-400 uppercase font-mono px-1.5 py-0.5 rounded bg-white/10">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                    <span className="text-emerald-400 font-bold truncate">Plaid Connected</span>
+                    <span className="text-[10px] text-gray-400 uppercase font-mono px-1.5 py-0.5 rounded bg-white/10 shrink-0">
                       {plaidEnv}
                     </span>
                   </>
                 ) : (
                   <>
-                    <KeyRound size={15} className="text-blue-400" />
-                    <span className="text-gray-300">Plaid API Credentials</span>
+                    <KeyRound size={15} className="text-blue-400 shrink-0" />
+                    <span className="text-gray-300 truncate">Plaid API Keys</span>
                   </>
                 )}
               </div>
               <button
                 type="button"
                 onClick={() => setShowKeySettings(!showKeySettings)}
-                className="text-xs text-blue-400 hover:text-blue-300 font-medium flex items-center gap-1 cursor-pointer"
+                className="text-xs text-blue-400 hover:text-blue-300 font-medium flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
               >
-                <span>{showKeySettings ? 'Hide Setup' : (plaidClientId?.trim() ? 'Edit Keys' : 'Configure Keys')}</span>
-                {showKeySettings ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                <span>{showKeySettings ? 'Hide' : (plaidClientId?.trim() ? 'Edit Keys' : 'Set Keys')}</span>
+                {showKeySettings ? <ChevronUp size={13} className="shrink-0" /> : <ChevronDown size={13} className="shrink-0" />}
               </button>
             </div>
 

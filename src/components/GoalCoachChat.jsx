@@ -485,7 +485,7 @@ export default function GoalCoachChat({
               <button
                 type="button"
                 onClick={handleApplyToApp}
-                className={`w-full py-2.5 px-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                className={`w-full py-2.5 px-4 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 text-center leading-snug transition-all cursor-pointer ${
                   appliedBlueprint
                     ? 'bg-emerald-500/20 border border-emerald-400/40 text-emerald-300'
                     : 'bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-black shadow-md'
@@ -493,13 +493,13 @@ export default function GoalCoachChat({
               >
                 {appliedBlueprint ? (
                   <>
-                    <CheckCircle2 size={14} />
-                    <span>Applied Income & Budgets to Your Tracker!</span>
+                    <CheckCircle2 size={14} className="shrink-0" />
+                    <span>Applied to Your Tracker!</span>
                   </>
                 ) : (
                   <>
-                    <Zap size={14} />
-                    <span>Apply Income & Suggested Budgets to Tracker</span>
+                    <Zap size={14} className="shrink-0" />
+                    <span>Apply Plan to My Tracker</span>
                   </>
                 )}
               </button>

@@ -533,15 +533,15 @@ export default function AuthGate({ onAuthenticated }) {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-black font-extrabold text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98] cursor-pointer shadow-lg"
+                className="w-full px-4 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-black font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 text-center leading-snug transition-all active:scale-[0.98] cursor-pointer shadow-lg"
               >
-                <Lock size={16} />
+                <Lock size={15} className="shrink-0" />
                 <span>
                   {loading
                     ? 'Setting Up Vault...'
                     : biometricSupported && enableFaceIdOnSignup
-                    ? 'Create Account & Enable Face ID'
-                    : 'Create Account & Continue'}
+                    ? 'Create Account & Face ID'
+                    : 'Create Account'}
                 </span>
               </button>
 
@@ -567,3 +567,4 @@ export default function AuthGate({ onAuthenticated }) {
     </div>
   );
 }
+

@@ -559,18 +559,18 @@ export default function MetricDetailModal({
           </div>
 
           {/* Footer Action */}
-          <div className="p-4 px-6 border-t border-zinc-800/80 bg-zinc-950 flex items-center justify-between shrink-0">
-            <span className="text-xs text-zinc-500">Apple Health Style Metric Detail</span>
+          <div className="p-4 px-5 sm:px-6 border-t border-zinc-800/80 bg-zinc-950 flex items-center justify-between gap-3 shrink-0">
+            <span className="text-[11px] text-zinc-500 truncate">Metric Overview</span>
             <button
               type="button"
               onClick={() => {
                 onClose();
                 onNavigateTab?.(current.targetTab);
               }}
-              className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
             >
               <span>{current.actionLabel}</span>
-              <ArrowRight size={13} />
+              <ArrowRight size={13} className="shrink-0" />
             </button>
           </div>
         </motion.div>

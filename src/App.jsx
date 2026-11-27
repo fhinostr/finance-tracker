@@ -1641,26 +1641,26 @@ function SubscriptionsAndDebtTab({
     <div className="space-y-5">
       {/* Overview Commitments Card */}
       <div className="relative overflow-hidden p-5 rounded-3xl bg-gradient-to-br from-zinc-900 via-neutral-900 to-black backdrop-blur-2xl border border-white/15 shadow-2xl space-y-4">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-orange-500/20 text-orange-400 border border-orange-500/30">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2.5 rounded-2xl bg-orange-500/20 text-orange-400 border border-orange-500/30 shrink-0">
               <Repeat size={22} />
             </div>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-orange-300">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-orange-300 truncate">
                 Monthly Fixed Commitments
               </p>
               <h2 className="text-2xl font-extrabold text-white">
                 {formatMoney(totalMonthlyCommitments)}
-                <span className="text-xs text-gray-400 font-normal"> / month required</span>
+                <span className="text-xs text-gray-400 font-normal"> / mo</span>
               </h2>
             </div>
           </div>
           <button
             onClick={onAdd}
-            className="text-[11px] font-semibold text-white px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 flex items-center gap-1 transition-all"
+            className="text-[11px] font-semibold text-white px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 flex items-center gap-1 whitespace-nowrap shrink-0 transition-all cursor-pointer"
           >
-            <Plus size={13} /> Add Item
+            <Plus size={13} className="shrink-0" /> Add Item
           </button>
         </div>
 
